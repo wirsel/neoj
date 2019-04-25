@@ -1,22 +1,38 @@
 //GITHUB url extraxt apoc folders
-with "https://github.com" as baseurl
-WITH baseurl, "https://raw.githubusercontent.com/wirsel/neoj_apoc/master/neo4j_apoc_folders.csv" as file 
+With file, datetime() as dt
+MERGE( lg: C_log { identifier: apoc.convert.toString(dt)})
+Set lg.name=lg.identifier
+Set lg.type= "C_log"
+Set lg.dt= dt
+Set lg.laststep=0
+Set lg.status = "actual"
+set lg.batchfile= file
+
+Set lg.laststep=lg.laststep+1 with * CALL apoc.create.setProperty( [lg], 'step'+apoc.text.lpad(tostring(lg.laststep) ,3,"0"), "C_log successfully created") YIELD node with lg
+
+//A 2
+OPTIONAL MATCH(lh:C_log {status:"actual"} ) 
+Where not lh.identifier=lg.identifier
+detach delete lh
+
+with lg, "https://github.com" as baseurl
+with lg, baseurl, "https://raw.githubusercontent.com/wirsel/neoj_apoc/master/neo4j_apoc_folders.csv" as file 
 LOAD CSV FROM file as line
-with baseurl, line, line[0] as url
-with baseurl,
+with lg, baseurl, line, line[0] as url
+with lg, baseurl,
 COLLECT(url) as urls
 
-with baseurl, urls, 1 as min
-with baseurl, urls, min, size(urls)-1 as maxx
-with baseurl, urls, min, min+0 as max
+with lg, baseurl, urls, 1 as min
+with lg, baseurl, urls, min, size(urls)-1 as maxx
+with lg, baseurl, urls, min, min+0 as max
 unwind range(min,max) as x
-with baseurl, urls, x, urls[x] as url
+with lg, baseurl, urls, x, urls[x] as url
 
 LOAD CSV FROM url as content
-with baseurl, 
+with lg, baseurl, 
 COLLECT(content) as cnt
-with baseurl, [x in cnt| x[0]] as lines
-with baseurl, filter(x in lines where x contains "href" and x contains "neo4j-contrib/neo4j-apoc-procedures/tree/3.5/src/main/java/apoc" and trim(x) starts with "<span class") as flines
+with lg, baseurl, [x in cnt| x[0]] as lines
+with lg, baseurl, filter(x in lines where x contains "href" and x contains "neo4j-contrib/neo4j-apoc-procedures/tree/3.5/src/main/java/apoc" and trim(x) starts with "<span class") as flines
 unwind flines as item
-with baseurl, split(split(item, 'href="')[1],'">') [0] as hrf
+with lg, baseurl, split(split(item, 'href="')[1],'">') [0] as hrf
 return baseurl+hrf
