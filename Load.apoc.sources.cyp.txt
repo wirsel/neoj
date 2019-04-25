@@ -4,7 +4,7 @@ with
 COLLECT (url[0]) as srcurls
 
 UNWIND srcurls as srcurl
-with srcurl
+with srcurls, srcurl
 where srcurl contains "apoc/agg"
 
 with srcurls, srcurl as fileorig
@@ -23,7 +23,7 @@ with *,  size(desclist)-1 as max, 4 as maxx
 UNWIND range(0,max) as x
 with *, desclist[x] as index
 with *, 
-list[index] as descitem, 
-list[index-1] as pfitem,
-list[index+1] as signature
+trim(list[index]) as descitem, 
+trim(list[index-1]) as pfitem,
+trim(list[index+1]) as signature
 return pfitem,  descitem, signature
