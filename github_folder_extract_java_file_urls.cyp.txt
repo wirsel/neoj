@@ -1,0 +1,6 @@
+WITH "https://github.com/neo4j-contrib/neo4j-apoc-procedures/tree/3.5/src/main/java/apoc/algo" as file 
+LOAD CSV FROM file as line
+with line, filter( x in line where x contains 'href="/neo4j-contrib/neo4j-apoc-procedures/blob/3.5/src/main/java/apoc/' and x contains ".java") as lst
+unwind lst as item 
+with item, 'https://github.com' +split(split(item, 'href="')[1],'">')[0] as url
+return url limit 10
