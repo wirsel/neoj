@@ -1,4 +1,5 @@
 //GITHUB url extraxt apoc folders
+with "https://raw.githubusercontent.com/wirsel/neoj_apoc/master/neo4j_apoc_folders.csv" as file 
 With file, datetime() as dt
 MERGE( lg: C_log { identifier: apoc.convert.toString(dt)})
 Set lg.name=lg.identifier
@@ -15,8 +16,8 @@ OPTIONAL MATCH(lh:C_log {status:"actual"} )
 Where not lh.identifier=lg.identifier
 detach delete lh
 
-with lg, "https://github.com" as baseurl
-with lg, baseurl, "https://raw.githubusercontent.com/wirsel/neoj_apoc/master/neo4j_apoc_folders.csv" as file 
+with file, lg, "https://github.com" as baseurl
+
 LOAD CSV FROM file as line
 with lg, baseurl, line, line[0] as url
 with lg, baseurl,
@@ -33,6 +34,11 @@ with lg, baseurl,
 COLLECT(content) as cnt
 with lg, baseurl, [x in cnt| x[0]] as lines
 with lg, baseurl, filter(x in lines where x contains "href" and x contains "neo4j-contrib/neo4j-apoc-procedures/tree/3.5/src/main/java/apoc" and trim(x) starts with "<span class") as flines
-unwind flines as item
-with lg, baseurl, split(split(item, 'href="')[1],'">') [0] as hrf
-return baseurl+hrf
+UNWIND flines as item
+with lg, baseurl, split(split(item, 'href="')[1],'">') [0] as href
+with lg, baseurl, baseurl+href as url
+with lg, baseurl,
+COLLECT(url) as urls
+with lg, baseurl, urls, CASE WHEN exists(lg.folders) THEN lg.folders ELSE [] END as folders
+with lg, baseurl, folders+urls as allurls
+return  allurls
