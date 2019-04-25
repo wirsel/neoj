@@ -1,1 +1,11 @@
-nn
+//GITHUB url extraxt apoc folders
+WITH "https://raw.githubusercontent.com/wirsel/neoj_apoc/master/neo4j_apoc_folders.csv" as file 
+LOAD CSV FROM file as line
+with line, line[0] as url
+with 
+COLLECT(url) as urls
+
+with urls, 45 as min, size(urls)-1 as max
+unwind range(min,max) as x
+with urls, x, urls[x] as url
+return url
