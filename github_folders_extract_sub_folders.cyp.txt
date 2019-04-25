@@ -1,11 +1,22 @@
 //GITHUB url extraxt apoc folders
-WITH "https://raw.githubusercontent.com/wirsel/neoj_apoc/master/neo4j_apoc_folders.csv" as file 
+with "https://github.com" as baseurl
+WITH baseurl, "https://raw.githubusercontent.com/wirsel/neoj_apoc/master/neo4j_apoc_folders.csv" as file 
 LOAD CSV FROM file as line
-with line, line[0] as url
-with 
+with baseurl, line, line[0] as url
+with baseurl,
 COLLECT(url) as urls
 
-with urls, 45 as min, size(urls)-1 as max
+with baseurl, urls, 1 as min
+with baseurl, urls, min, size(urls)-1 as maxx
+with baseurl, urls, min, min+0 as max
 unwind range(min,max) as x
-with urls, x, urls[x] as url
-return url
+with baseurl, urls, x, urls[x] as url
+
+LOAD CSV FROM url as content
+with baseurl, 
+COLLECT(content) as cnt
+with baseurl, [x in cnt| x[0]] as lines
+with baseurl, filter(x in lines where x contains "href" and x contains "neo4j-contrib/neo4j-apoc-procedures/tree/3.5/src/main/java/apoc" and trim(x) starts with "<span class") as flines
+unwind flines as item
+with baseurl, split(split(item, 'href="')[1],'">') [0] as hrf
+return baseurl+hrf
