@@ -1,0 +1,29 @@
+with "https://raw.githubusercontent.com/wirsel/neoj_apoc/master/apoc_source_urls.csv" as srcurls
+LOAD CSV FROM srcurls as url
+with 
+COLLECT (url[0]) as srcurls
+
+UNWIND srcurls as srcurl
+with srcurl
+where srcurl contains "apoc/agg"
+
+with srcurls, srcurl as fileorig
+with srcurls, fileorig, replace(replace(fileorig,"https://github.com","https://raw.githubusercontent.com"),"/blob","") as file
+
+LOAD CSV FROM file as list0 fieldterminator '\n'
+WITH list0, filter( x in list0 where not x is null) as list
+with list, size(list)-1 as max, 4 as maxx
+UNWIND range(0,max) as x
+with *,  trim(list[x]) as line
+where line starts with '@Description'
+with list, 
+COLLECT(x) as desclist
+
+with *,  size(desclist)-1 as max, 4 as maxx
+UNWIND range(0,max) as x
+with *, desclist[x] as index
+with *, 
+list[index] as descitem, 
+list[index-1] as pfitem,
+list[index+1] as signature
+return pfitem,  descitem, signature
