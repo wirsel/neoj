@@ -1,44 +1,105 @@
 //GITHUB url extraxt apoc folders
-with "https://raw.githubusercontent.com/wirsel/neoj_apoc/master/neo4j_apoc_folders.csv" as file 
-With file, datetime() as dt
-MERGE( lg: C_log { identifier: apoc.convert.toString(dt)})
-Set lg.name=lg.identifier
-Set lg.type= "C_log"
-Set lg.dt= dt
-Set lg.laststep=0
-Set lg.status = "actual"
-set lg.batchfile= file
 
-Set lg.laststep=lg.laststep+1 with * CALL apoc.create.setProperty( [lg], 'step'+apoc.text.lpad(tostring(lg.laststep) ,3,"0"), "C_log successfully created") YIELD node with lg
+With {
+    level:3,
+    batchSize:1,
+    parallel:true,
+    concurrency:3,
+    baseurl: 'https://github.com', 
+    offseturl: 'https://github.com/neo4j-contrib/neo4j-apoc-procedures/tree/3.5/src/main/java/apoc',
+    split1: 'href="',
+    split2: '">',
+    maxiteration: 0
 
-//A 2
-OPTIONAL MATCH(lh:C_log {status:"actual"} ) 
-Where not lh.identifier=lg.identifier
-detach delete lh
+} as c
+//-------------------
+With *, '
+WITH { 
+    dt: datetime(),
+    baseurl: \'<<baseurl>>\' , 
+    offseturl: \'<<offseturl>>\', 
+    split1: \'<<split1>>\', 
+    split2: \'<<split2>>\',
+    level: <<level>>,
+    maxiteration: <<maxiteration>>
+} as c
+MATCH (u:C_url)
+where u.level = c.level 
+With c, u, u.identifier as id order by id
+With c, 
+COLLECT(u) as urls
+With urls, apoc.map.mergeList([ c, { maxindex: size(urls)-1} ]) as c
+With *, CASE WHEN c.maxiteration > 0 and not (0 + c.maxiteration) > c.maxindex THEN c.maxiteration ELSE c. maxindex END as maxrng
 
-with file, lg, "https://github.com" as baseurl
+UNWIND range(0, maxrng) as x
+With *, urls[x] as url
+With apoc.map.mergeList([ c, { index:x, url:url.identifier} ]) as cc
+return cc as c
+'
+AS str
+With *, reduce( s=str, x in keys(c) | replace(s,'<<'+x+'>>', toString(c[x])) )
+AS statementIteration
+//----------------------
+With *,'
+MERGE( t:C_trace {identifier: apoc.convert.toString(c.dt) })
+On create set t.dt = c.dt,  t.type = \'C_trace\'
 
-LOAD CSV FROM file as line
-with lg, baseurl, line, line[0] as url
-with lg, baseurl,
-COLLECT(url) as urls
+set t. urls = coalesce(t.urls, [])+ [coalesce( apoc.convert.toString( c.url ), \' null\' )]
+set t. baseurl = coalesce( apoc.convert.toString( c.baseurl ), \' null\' )
+set t. offseturl = coalesce( apoc.convert.toString( c.offseturl ), \' null\' )
+set t. split1 = coalesce( apoc.convert.toString( c.split1 ), \' null\' )
+set t. split2 = coalesce( apoc.convert.toString( c.split2 ), \' null\' )
+set t. level = coalesce( apoc.convert.toString( c.level ), \' null\' )
+set t. maxstep = coalesce( apoc.convert.toString( c.maxindex + 1), \' null\' )
+set t. step = coalesce( apoc.convert.toString( c.index +1), \' null\' )
+set t. progress = coalesce( apoc.convert.toString( c.index +1)+\'/\'+ apoc.convert.toString( c.maxindex +1), \' null\' )
 
-with lg, baseurl, urls, 1 as min
-with lg, baseurl, urls, min, size(urls)-1 as maxx
-with lg, baseurl, urls, min, min+0 as max
-unwind range(min,max) as x
-with lg, baseurl, urls, x, urls[x] as url
+Set t.cnt= coalesce( t.cnt, 0) + 1
+With *
+LOAD CSV FROM c.url as line
+With t, c, 
+COLLECT(line[0]) as lines
+With *, apoc.text.join(lines, \' \') as content
 
-LOAD CSV FROM url as content
-with lg, baseurl, 
-COLLECT(content) as cnt
-with lg, baseurl, [x in cnt| x[0]] as lines
-with lg, baseurl, filter(x in lines where x contains "href" and x contains "neo4j-contrib/neo4j-apoc-procedures/tree/3.5/src/main/java/apoc" and trim(x) starts with "<span class") as flines
-UNWIND flines as item
-with lg, baseurl, split(split(item, 'href="')[1],'">') [0] as href
-with lg, baseurl, baseurl+href as url
-with lg, baseurl,
-COLLECT(url) as urls
-with lg, baseurl, urls, CASE WHEN exists(lg.folders) THEN lg.folders ELSE [] END as folders
-with lg, baseurl, folders+urls as allurls
-return  allurls
+set t.contentlist = coalesce(t. contentlist, [])+ [coalesce( size(apoc.convert.toString( content )), \' null\' )]
+
+with *, filter(x in lines where x contains \'href\' and x contains \'neo4j-contrib/neo4j-apoc-procedures/tree/3.5/src/main/java/apoc\' and trim(x) starts with \'<span class\') as flines
+With *, [x in flines |  c.baseurl + (split(split(x, c.split1 )[1], c.split2) [0] )] as longurls
+With *, [x in longurls |  replace(x,c.offseturl,\'\') ] as shorturls
+
+set t. shorturlslist = coalesce(t. shorturlslist, [])+ [coalesce( apoc.convert.toString( shorturls ), \' null\' )]
+
+set t. longurlslist = coalesce(t. longurlslist, [])+ [coalesce( apoc.convert.toString( longurls ), \' null\' )]
+
+With *
+
+CALL apoc.do.when(longurls=[],
+\' with $t as t set t.urlids = coalesce(t.urlids, [])+[apoc.convert.toString([])]
+\',\'\', { t:t } ) yield value
+
+
+With *
+UNWIND range(0, size(longurls)-1) as x
+With *, longurls[x] as longurl, shorturls[x] as shorturl
+MERGE(lu:C_url {identifier: longurl})
+Set lu.name=lu.identifier
+Set lu.name_short = shorturl
+Set lu.type=\'C_url\'
+Set lu.level=c.level+1
+Set lu.tracedt=c.dt
+Set lu.linkedby=coalesce(c.url,\'null\')
+//MERGE(purl)-[le:LINKS_TO]->(lu)
+With t, c, COLLECT(id(lu)) as urlids
+
+set t.urlids = coalesce(t.urlids, [])+ [coalesce( apoc.convert.toString( urlids ), \' null\' )]
+
+
+Return t
+'
+As statementAction
+
+
+
+CALL apoc.periodic.iterate(statementIteration, statementAction, {batchSize:c.batchSize, parallel:c.parallel, concurrency: c.concurrency} ) YIELD batches , total , timeTaken , committedOperations , failedOperations , failedBatches , retries , errorMessages , batch , operations , wasTerminated , failedParams 
+
+return batches , total , timeTaken , committedOperations , failedOperations , failedBatches , retries , errorMessages , batch , operations , wasTerminated , failedParams
