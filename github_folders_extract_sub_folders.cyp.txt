@@ -41,7 +41,7 @@ With *, CASE WHEN c.maxiteration > 0 and not (0 + c.maxiteration) > c.maxindex T
 
 UNWIND range(0, maxrng) as x
 With *, urls[x] as url
-With apoc.map.mergeList([ c, { index:x, url:url} ]) as cc
+With apoc.map.mergeList([ c, { index:x, maxrngindex: maxrng, url:url} ]) as cc
 return cc as c
 '
 AS str
@@ -53,40 +53,45 @@ With c
 MERGE( t:C_trace {identifier: apoc.convert.toString(c.dt) })
 On create set t.dt = c.dt,  t.type = \'C_trace\'
 
-set t.step1= coalesce(t. step1, [])+ [coalesce( apoc.convert.toString( 1 ), \' null\' )]
+Set t.step = 0
+Set t.steps = []
+set t.stepss = coalesce( t.stepss, [x in range(0, c.maxrngindex) |  \'\'] )
+
+Set t.step = tointeger(t.step)+1
+set t.steps= t. steps + [ tointeger(t.step)]
+set t.stepss = apoc.coll.set( t.stepss, c.index , apoc.text.join( [x in t.steps | tostring(x)] , \',\'))
 
 set t. urls = coalesce(t.urls, [])+ [coalesce( apoc.convert.toString( c.url ), \' null\' )]
-set t. baseurl = coalesce( apoc.convert.toString( c.baseurl ), \' null\' )
-set t. offseturl = coalesce( apoc.convert.toString( c.offseturl ), \' null\' )
-set t. split1 = coalesce( apoc.convert.toString( c.split1 ), \' null\' )
-set t. split2 = coalesce( apoc.convert.toString( c.split2 ), \' null\' )
-set t. level = coalesce( apoc.convert.toString( c.level ), \' null\' )
-set t. maxstep = coalesce( apoc.convert.toString( c.maxindex + 1), \' null\' )
-set t. step = coalesce( apoc.convert.toString( c.index +1), \' null\' )
+Set t.c = apoc.convert.toString(c)
 set t. progress = coalesce( apoc.convert.toString( c.index +1)+\'/\'+ apoc.convert.toString( c.maxindex +1), \' null\' )
 
-set t.step2 = coalesce(t. step2, [])+ [coalesce( apoc.convert.toString( 2 ), \' null\' )]
-
+Set t.step = tointeger(t.step)+1
+set t.steps= t. steps + [ tointeger(t.step)]
+set t.stepss = apoc.coll.set( t.stepss, c.index , apoc.text.join( [x in t.steps | tostring(x)] , \',\'))
 
 Set t.cnt= coalesce( t.cnt, 0) + 1
 With *
 MATCH( u:C_url { identifier: c.url })
+Set t.step = tointeger(t.step)+1
+set t.steps= t. steps + [ tointeger(t.step)]
+set t.stepss = apoc.coll.set( t.stepss, c.index , apoc.text.join( [x in t.steps | tostring(x)] , \',\'))
 
 set t.parentLastProcessed= apoc.convert.toString(coalesce( u.last_processed, \'null\' ))
 With *
 Where coalesce( u.last_processed ,\'\') = \'\'
-
-set t.step3 = coalesce(t. step3, [])+ [coalesce( apoc.convert.toString( 3 ), \' null\' )]
-
+Set t.step = tointeger(t.step)+1
+set t.steps= t. steps + [ tointeger(t.step)]
+set t.stepss = apoc.coll.set( t.stepss, c.index , apoc.text.join( [x in t.steps | tostring(x)] , \',\'))
 
 With *
-
 LOAD CSV FROM c.url as line
 With t, c, u, 
 COLLECT(line[0]) as lines
 With *, apoc.text.join(lines, \' \') as content
 
-set t.step4 = coalesce(t. step4, [])+ [coalesce( apoc.convert.toString( 4 ), \' null\' )]
+Set t.step = tointeger(t.step)+1
+set t.steps= t. steps + [ tointeger(t.step)]
+set t.stepss = apoc.coll.set( t.stepss, c.index , apoc.text.join( [x in t.steps | tostring(x)] , \',\'))
 
 
 set t.contentlist = coalesce(t. contentlist, [])+ [coalesce( size(apoc.convert.toString( content )), \' null\' )]
@@ -98,9 +103,9 @@ With *, [x in longurls2 | replace(x, \':/\', \'://\')] as longurls
 With *, [x in longurls |  replace(x,c.offseturl,\'\') ] as shorturls1
 With *, [x in shorturls1 | CASE WHEN left(x,1)= \'/\' THEN right(x,size(x)-1) ELSE x END] as shorturls
 
-set t.step5 = coalesce(t. step5, [])+ [coalesce( apoc.convert.toString( 5 ), \' null\' )]
-
-
+Set t.step = tointeger(t.step)+1
+set t.steps= t. steps + [ tointeger(t.step)]
+set t.stepss = apoc.coll.set( t.stepss, c.index , apoc.text.join( [x in t.steps | tostring(x)] , \',\'))
 
 set t. longurlslist = coalesce(t. longurlslist, [])+ [coalesce( apoc.convert.toString( longurls ), \' null\' )]
 
@@ -119,7 +124,10 @@ CALL apoc.do.when(
     { t:t , u:u, dt:c.dt }
 ) yield value as valurlids
 
-set t.step6 = coalesce(t. step6, [])+ [coalesce( apoc.convert.toString( 6 ), \' null\' )]
+Set t.step = tointeger(t.step)+1
+set t.steps= t. steps + [ tointeger(t.step)]
+set t.stepss = apoc.coll.set( t.stepss, c.index , apoc.text.join( [x in t.steps | tostring(x)] , \',\'))
+
 With *
 UNWIND range(0, size(longurls)-1) as x
 With *, longurls[x] as longurl, shorturls[x] as shorturl
@@ -138,7 +146,9 @@ Set lu.linkedby=coalesce(c.url,\'null\')
 With t, c, u, COLLECT(lu) as lus
 With t, c, u, lus, [ x in lus |  id(x) ] as urlids
 With t, c, u, urlids, [ x in lus |  coalesce(x.last_action, \'null\' ) ] as actions
-set t.step7 = coalesce(t. step7, [])+ [coalesce( apoc.convert.toString( 7 ), \' null\' )]
+Set t.step = tointeger(t.step)+1
+set t.steps= t. steps + [ tointeger(t.step)]
+set t.stepss = apoc.coll.set( t.stepss, c.index , apoc.text.join( [x in t.steps | tostring(x)] , \',\'))
 
 set t. actions = coalesce(t. actions, [])+ [coalesce( apoc.convert.toString( actions ), \' null\' )]
 
@@ -146,7 +156,9 @@ set t.urlids = coalesce(t.urlids, [])+ [coalesce( apoc.convert.toString( urlids 
 
 Set u.last_processed=apoc.convert.toString(c.dt)
 
-set t.step8 = coalesce(t. step8, [])+ [coalesce( apoc.convert.toString( 8 ), \' null\' )]
+Set t.step = tointeger(t.step)+1
+set t.steps= t. steps + [ tointeger(t.step)]
+set t.stepss = apoc.coll.set( t.stepss, c.index , apoc.text.join( [x in t.steps | tostring(x)] , \',\'))
 
 Return t
 '
