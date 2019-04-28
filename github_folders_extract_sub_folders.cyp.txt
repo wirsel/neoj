@@ -12,7 +12,7 @@ With {
     maxiteration: 0
 
 } as c
-//-------------------
+//--------------------------------------------------------------
 With *, '
 WITH { 
     dt: datetime(),
@@ -31,7 +31,7 @@ With apoc.map.setKey(c, \'offseturl\', offseturl) as c
 
 
 MATCH (u:C_url)
-where u.level = c.level and not coalesce( u.last_processed, \'pp\') = \'pp\'
+where u.level = c.level
 With c, CASE WHEN right(u.identifier,1) = \'/\' THEN left( u.identifier,size(u.identifier)-1) ELSE u.identifier END  as url
 With c, url order by url
 With c, 
@@ -143,6 +143,8 @@ Set lu.name_short = shorturl
 Set lu.level=c.level+1
 Set lu.tracedt=c.dt
 Set lu.linkedby=coalesce(c.url,\'null\')
+MERGE(u)-[e:POINTS_TO]->(lu)
+
 With t, c, u, COLLECT(lu) as lus
 With t, c, u, lus, [ x in lus |  id(x) ] as urlids
 With t, c, u, urlids, [ x in lus |  coalesce(x.last_action, \'null\' ) ] as actions
