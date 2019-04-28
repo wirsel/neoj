@@ -1,7 +1,7 @@
-//GITHUB url extraxt apoc folders
+//C_url for apoc load from github
 
 With {
-    level:3,
+    level: $level,
     batchSize:1,
     parallel:true,
     concurrency:3,
@@ -23,17 +23,25 @@ WITH {
     level: <<level>>,
     maxiteration: <<maxiteration>>
 } as c
+With c, CASE WHEN right(c.baseurl,1) = \'/\' THEN left(c.baseurl,size(c.baseurl)-1) ELSE c.baseurl END as baseurl
+With apoc.map.setKey(c, \'baseurl\', baseurl) as c
+
+With c, CASE WHEN right(c. offseturl,1) = \'/\' THEN left(c. offseturl,size(c.offseturl)-1) ELSE c. offseturl END  as offseturl
+With apoc.map.setKey(c, \'offseturl\', offseturl) as c
+
+
 MATCH (u:C_url)
-where u.level = c.level 
-With c, u, u.identifier as id order by id
+where u.level = c.level and not coalesce( u.last_processed, \'pp\') = \'pp\'
+With c, CASE WHEN right(u.identifier,1) = \'/\' THEN left( u.identifier,size(u.identifier)-1) ELSE u.identifier END  as url
+With c, url order by url
 With c, 
-COLLECT(u) as urls
+COLLECT(url) as urls
 With urls, apoc.map.mergeList([ c, { maxindex: size(urls)-1} ]) as c
 With *, CASE WHEN c.maxiteration > 0 and not (0 + c.maxiteration) > c.maxindex THEN c.maxiteration ELSE c. maxindex END as maxrng
 
 UNWIND range(0, maxrng) as x
 With *, urls[x] as url
-With apoc.map.mergeList([ c, { index:x, url:url.identifier} ]) as cc
+With apoc.map.mergeList([ c, { index:x, url:url} ]) as cc
 return cc as c
 '
 AS str
@@ -41,8 +49,11 @@ With *, reduce( s=str, x in keys(c) | replace(s,'<<'+x+'>>', toString(c[x])) )
 AS statementIteration
 //----------------------
 With *,'
+With c
 MERGE( t:C_trace {identifier: apoc.convert.toString(c.dt) })
 On create set t.dt = c.dt,  t.type = \'C_trace\'
+
+set t.step1= coalesce(t. step1, [])+ [coalesce( apoc.convert.toString( 1 ), \' null\' )]
 
 set t. urls = coalesce(t.urls, [])+ [coalesce( apoc.convert.toString( c.url ), \' null\' )]
 set t. baseurl = coalesce( apoc.convert.toString( c.baseurl ), \' null\' )
@@ -54,45 +65,88 @@ set t. maxstep = coalesce( apoc.convert.toString( c.maxindex + 1), \' null\' )
 set t. step = coalesce( apoc.convert.toString( c.index +1), \' null\' )
 set t. progress = coalesce( apoc.convert.toString( c.index +1)+\'/\'+ apoc.convert.toString( c.maxindex +1), \' null\' )
 
+set t.step2 = coalesce(t. step2, [])+ [coalesce( apoc.convert.toString( 2 ), \' null\' )]
+
+
 Set t.cnt= coalesce( t.cnt, 0) + 1
 With *
+MATCH( u:C_url { identifier: c.url })
+
+set t.parentLastProcessed= apoc.convert.toString(coalesce( u.last_processed, \'null\' ))
+With *
+Where coalesce( u.last_processed ,\'\') = \'\'
+
+set t.step3 = coalesce(t. step3, [])+ [coalesce( apoc.convert.toString( 3 ), \' null\' )]
+
+
+With *
+
 LOAD CSV FROM c.url as line
-With t, c, 
+With t, c, u, 
 COLLECT(line[0]) as lines
 With *, apoc.text.join(lines, \' \') as content
+
+set t.step4 = coalesce(t. step4, [])+ [coalesce( apoc.convert.toString( 4 ), \' null\' )]
+
 
 set t.contentlist = coalesce(t. contentlist, [])+ [coalesce( size(apoc.convert.toString( content )), \' null\' )]
 
 with *, filter(x in lines where x contains \'href\' and x contains \'neo4j-contrib/neo4j-apoc-procedures/tree/3.5/src/main/java/apoc\' and trim(x) starts with \'<span class\') as flines
-With *, [x in flines |  c.baseurl + (split(split(x, c.split1 )[1], c.split2) [0] )] as longurls
-With *, [x in longurls |  replace(x,c.offseturl,\'\') ] as shorturls
+With *, [x in flines |  c.baseurl + (split(split(x, c.split1 )[1], c.split2) [0] )] as longurls1
+With *, [x in longurls1 | replace(x, \'//\' , \'/\')] as longurls2
+With *, [x in longurls2 | replace(x, \':/\', \'://\')] as longurls
+With *, [x in longurls |  replace(x,c.offseturl,\'\') ] as shorturls1
+With *, [x in shorturls1 | CASE WHEN left(x,1)= \'/\' THEN right(x,size(x)-1) ELSE x END] as shorturls
 
-set t. shorturlslist = coalesce(t. shorturlslist, [])+ [coalesce( apoc.convert.toString( shorturls ), \' null\' )]
+set t.step5 = coalesce(t. step5, [])+ [coalesce( apoc.convert.toString( 5 ), \' null\' )]
+
+
 
 set t. longurlslist = coalesce(t. longurlslist, [])+ [coalesce( apoc.convert.toString( longurls ), \' null\' )]
 
+set t. shorturlslist = coalesce(t. shorturlslist, [])+ [coalesce( apoc.convert.toString( shorturls ), \' null\' )]
+
 With *
+CALL apoc.do.when(
+    longurls=[],
+    \' 
+    with $t as t , $dt as dt, $u as u
+    set t. actions = coalesce(t. actions, [])+[apoc.convert.toString([])]
+    set t.urlids = coalesce(t.urlids, [])+[apoc.convert.toString([])]
+    set u.last_processed = apoc.convert.toString( dt )
+    \',
+    \'\', 
+    { t:t , u:u, dt:c.dt }
+) yield value as valurlids
 
-CALL apoc.do.when(longurls=[],
-\' with $t as t set t.urlids = coalesce(t.urlids, [])+[apoc.convert.toString([])]
-\',\'\', { t:t } ) yield value
-
-
+set t.step6 = coalesce(t. step6, [])+ [coalesce( apoc.convert.toString( 6 ), \' null\' )]
 With *
 UNWIND range(0, size(longurls)-1) as x
 With *, longurls[x] as longurl, shorturls[x] as shorturl
 MERGE(lu:C_url {identifier: longurl})
-Set lu.name=lu.identifier
+on create set 
+    lu.created_at = datetime(), 
+    lu.name=lu.identifier,
+    lu.type=\'C_url\',
+    lu.last_action = \'created\'
+on match set
+    lu.last_action = \'matched\'
 Set lu.name_short = shorturl
-Set lu.type=\'C_url\'
 Set lu.level=c.level+1
 Set lu.tracedt=c.dt
 Set lu.linkedby=coalesce(c.url,\'null\')
-//MERGE(purl)-[le:LINKS_TO]->(lu)
-With t, c, COLLECT(id(lu)) as urlids
+With t, c, u, COLLECT(lu) as lus
+With t, c, u, lus, [ x in lus |  id(x) ] as urlids
+With t, c, u, urlids, [ x in lus |  coalesce(x.last_action, \'null\' ) ] as actions
+set t.step7 = coalesce(t. step7, [])+ [coalesce( apoc.convert.toString( 7 ), \' null\' )]
+
+set t. actions = coalesce(t. actions, [])+ [coalesce( apoc.convert.toString( actions ), \' null\' )]
 
 set t.urlids = coalesce(t.urlids, [])+ [coalesce( apoc.convert.toString( urlids ), \' null\' )]
 
+Set u.last_processed=apoc.convert.toString(c.dt)
+
+set t.step8 = coalesce(t. step8, [])+ [coalesce( apoc.convert.toString( 8 ), \' null\' )]
 
 Return t
 '
