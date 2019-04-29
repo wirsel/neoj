@@ -7,6 +7,7 @@ with *, "BTIS_1000000054" as device
 MERGE( d: C_neo4jdesktop_inst {identifier:device})
 set d.type="C_neo4jdesktop_inst"
 set d.name=d.identifier
+set d:S_neo4j
 with d
 
 with *, "w:/" as path
@@ -25,6 +26,7 @@ set prj.type="C_neo4jdesktop_prj"
 set prj.uuid = replace(prj.identifier,"project-","")
 set prj.name=prj_map.name
 set prj.createdAt = prj_map.createdAt
+set prj:S_neo4j
 MERGE(d)-[r:CONTAINS_PRJ]->(prj)
 with COLLECT(prj.identifier) as prjs_id
 return prjs_id;
@@ -49,6 +51,7 @@ set db.description=db_map.description
 set db.createdAt = db_map.createdAt
 set db.isValidPassword = db_map.isValidPassword
 set db.dirtySettings = db_map.dirtySettings
+set db:S_neo4j
 With COLLECT(db.identifier) as dbs_id
 return dbs_id;
 
@@ -72,6 +75,7 @@ set dbs.nodesCount= tointeger(db_map.statistics.nodesCount)
 set dbs.relationshipsCount= tointeger(db_map.statistics.relationshipsCount)
 set dbs.labelsCount= tointeger(db_map.statistics.labelsCount)
 set dbs.relationshipTypesCount= tointeger(db_map.statistics.relationshipTypesCount)
+set dbs:S_neo4j
 MERGE(db)-[e:HAS_STATISTICS]->(dbs)
 With COLLECT(dbs.identifier) as dbss_id
 return dbss_id;
