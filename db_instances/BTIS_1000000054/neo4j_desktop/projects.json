@@ -1,0 +1,44 @@
+{
+  "project-3221b743-c1ac-456a-ab96-f85bebbb3a4e": {
+    "createdAt": "2018-02-14T21:09:55.224Z",
+    "name": "AWS consumptions",
+    "id": "project-3221b743-c1ac-456a-ab96-f85bebbb3a4e",
+    "graphApps": []
+  },
+  "project-66acbe9c-8366-4c6c-8910-90e025039091": {
+    "createdAt": "2018-03-18T10:54:30.520Z",
+    "name": "2017-4992",
+    "id": "project-66acbe9c-8366-4c6c-8910-90e025039091",
+    "graphApps": []
+  },
+  "project-7c30186e-9fb8-48bf-927f-8036fa212c97": {
+    "createdAt": "2018-02-28T08:29:54.623Z",
+    "name": "20180228",
+    "id": "project-7c30186e-9fb8-48bf-927f-8036fa212c97",
+    "graphApps": []
+  },
+  "project-7dfa70a2-206f-427f-af82-9490ac564536": {
+    "createdAt": "2018-02-14T09:08:13.172Z",
+    "name": "System Context",
+    "id": "project-7dfa70a2-206f-427f-af82-9490ac564536",
+    "graphApps": []
+  },
+  "project-a225c47e-f2d2-46e4-878f-f1ee97d1ca25": {
+    "createdAt": "2018-02-08T07:17:19.629Z",
+    "name": "COPQ",
+    "id": "project-a225c47e-f2d2-46e4-878f-f1ee97d1ca25",
+    "graphApps": []
+  },
+  "project-e803cd57-f60f-4905-a848-30cefcda6508": {
+    "createdAt": "2018-03-04T15:28:10.621Z",
+    "name": "BT",
+    "id": "project-e803cd57-f60f-4905-a848-30cefcda6508",
+    "graphApps": []
+  },
+  "project-ebf26d32-a8c3-4cf0-89d8-0eda23eed835": {
+    "createdAt": "2018-10-10T07:47:25.040Z",
+    "id": "project-ebf26d32-a8c3-4cf0-89d8-0eda23eed835",
+    "name": "Project",
+    "graphApps": []
+  }
+}
