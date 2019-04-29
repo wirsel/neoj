@@ -27,7 +27,7 @@ set prj.name=prj_map.name
 set prj.createdAt = prj_map.createdAt
 MERGE(d)-[r:CONTAINS_PRJ]->(prj)
 with COLLECT(prj.identifier) as prjs_id
-retrun prjs_id;
+return prjs_id;
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //================================C_neo4j_db_inst======================================================
@@ -51,5 +51,3 @@ set db.isValidPassword = db_map.isValidPassword
 set db.dirtySettings = db_map.dirtySettings
 With COLLECT(db.identifier) as dbs_id
 return dbs_id;
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-//================================C_neo4j_db_inst_stat======================================================
