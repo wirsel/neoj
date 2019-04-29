@@ -1,0 +1,24 @@
+//C_neo4jdesktop_inst + C_neo4jdesktop_prj
+with *, "BTIS_1000000054" as device
+MERGE( d: C_neo4jdesktop_inst {identifier:device})
+set d.type="C_neo4jdesktop_inst"
+set d.name=d.identifier
+with d
+
+with *, "w:/" as path
+With *, "projects.json" as file
+with *, "file:///" as protocol
+
+//LOAD CSV FROM protocol+file as line
+Call apoc.load.json(protocol+path+file) yield value as map
+with *,  keys(map) as project_ids
+unwind range(0, size(project_ids) -1 ) as x
+with *, map[project_ids[x]] as prj_map
+MERGE( prj: C_neo4jdesktop_prj {identifier:prj_map.id})
+set prj.type="C_neo4jdesktop_prj"
+set prj.uuid = replace(prj.identifier,"project-","")
+set prj.name=prj_map.name
+set prj.createdAt = prj_map.createdAt
+MERGE(d)-[r:CONTAINS_PRJ]->(prj)
+
+return d, prj
