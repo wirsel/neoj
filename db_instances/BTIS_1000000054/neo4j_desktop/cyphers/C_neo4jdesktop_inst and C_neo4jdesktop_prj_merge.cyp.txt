@@ -65,7 +65,7 @@ UNWIND range(0, size(dbs_map) -1 ) as x
 with *, map[dbs_map[x]] as db_map
 MATCH(db:C_neo4j_db_inst {identifier:db_map.id})
 with *
-MERGE(dbs: C_neo4j_db_inst_stat {identifier:apoc.convert_toString(dt)+"/"+db_map.id})
+MERGE(dbs: C_neo4j_db_inst_stat {identifier:apoc.convert.toString(dt)+"/"+db_map.id})
 set dbs.type="C_neo4j_db_inst_stat"
 set dbs.name= dbs.identifier
 set dbs.nodesCount= tointeger(db_map.statistics.nodesCount)
