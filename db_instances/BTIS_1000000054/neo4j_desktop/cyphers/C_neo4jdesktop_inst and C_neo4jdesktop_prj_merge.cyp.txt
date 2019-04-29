@@ -51,3 +51,18 @@ set db.isValidPassword = db_map.isValidPassword
 set db.dirtySettings = db_map.dirtySettings
 With COLLECT(db.identifier) as dbs_id
 return dbs_id;
+
+UNWIND range(0, size(dbs_map) -1 ) as x
+with *, map[dbs_map[x]] as db_map
+MERGE( db: C_neo4j_db_inst {identifier:db_map.id})
+set db.type="C_neo4j_db_inst"
+set db.uuid = replace(db.identifier,"database-","")
+set db.version=db_map.version
+set db.edition=db_map.edition
+set db.name=db_map.name
+set db.description=db_map.description
+set db.createdAt = db_map.createdAt
+set db.isValidPassword = db_map.isValidPassword
+set db.dirtySettings = db_map.dirtySettings
+With COLLECT(db.identifier) as dbs_id
+return dbs_id;
