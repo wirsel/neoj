@@ -46,6 +46,7 @@ set db.type="C_neo4j_db_inst"
 set db.uuid = replace(db.identifier,"database-","")
 set db.version=db_map.version
 set db.edition=db_map.edition
+set db.projectId=db_map.projectId
 set db.name=db_map.name
 set db.description=db_map.description
 set db.createdAt = db_map.createdAt
@@ -54,6 +55,23 @@ set db.dirtySettings = db_map.dirtySettings
 set db:S_neo4j
 With COLLECT(db.identifier) as dbs_id
 return dbs_id;
+
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//=======C_neo4jdesktop_prj-[CONTAINS_DB]->C_neo4j_db_inst==
+with "w:/" as path
+with *, "databases.json" as dbFile
+with *, "file:///" as protocol
+Call apoc.load.json(protocol+path+dbFile) yield value as map
+with *,  keys(map) as dbs_map
+
+UNWIND range(0, size(dbs_map) -1 ) as x
+with *, map[dbs_map[x]] as db_map
+MATCH( db: C_neo4j_db_inst {identifier:db_map.id})
+with db
+MATCH( prj: C_neo4jdesktop_prj {identifier:db.projectId})
+with db, prj
+MERGE(prj)-[e:CONTAINS_DB]->(db)
+return collect(e);
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //================================C_neo4j_db_inst_stat================
