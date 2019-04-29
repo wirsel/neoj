@@ -1,4 +1,5 @@
 //C_neo4jdesktop_inst + C_neo4jdesktop_prj
+//https://github.com/wirsel/neoj/blob/master/db_instances/BTIS_1000000054/neo4j_desktop/cyphers/C_neo4jdesktop_inst%20and%20C_neo4jdesktop_prj_merge.cyp.txt
 with *, "BTIS_1000000054" as device
 MERGE( d: C_neo4jdesktop_inst {identifier:device})
 set d.type="C_neo4jdesktop_inst"
