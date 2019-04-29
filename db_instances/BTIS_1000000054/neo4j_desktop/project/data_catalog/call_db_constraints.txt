@@ -1,0 +1,13 @@
+description
+CONSTRAINT ON ( c_column:C_column ) ASSERT c_column.identifier IS UNIQUE
+CONSTRAINT ON ( c_column_name:C_column_name ) ASSERT c_column_name.identifier IS UNIQUE
+CONSTRAINT ON ( c_data_type:C_data_type ) ASSERT c_data_type.identifier IS UNIQUE
+CONSTRAINT ON ( c_dbms:C_dbms ) ASSERT c_dbms.identifier IS UNIQUE
+CONSTRAINT ON ( c_fk_constraint:C_fk_constraint ) ASSERT c_fk_constraint.identifier IS UNIQUE
+CONSTRAINT ON ( c_meetup_group:C_meetup_group ) ASSERT c_meetup_group.identigier IS UNIQUE
+CONSTRAINT ON ( c_meetup_profile:C_meetup_profile ) ASSERT c_meetup_profile.identigier IS UNIQUE
+CONSTRAINT ON ( c_pk_constraint:C_pk_constraint ) ASSERT c_pk_constraint.identifier IS UNIQUE
+CONSTRAINT ON ( c_schema:C_schema ) ASSERT c_schema.identifier IS UNIQUE
+CONSTRAINT ON ( c_table:C_table ) ASSERT c_table.identifier IS UNIQUE
+CONSTRAINT ON ( c_table_logical:C_table_logical ) ASSERT c_table_logical.identifier IS UNIQUE
+CONSTRAINT ON ( c_url:C_url ) ASSERT c_url.identigier IS UNIQUE
