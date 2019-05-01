@@ -3,20 +3,23 @@
 
 :param c => { 
     level1:{ 
-        label:"C_neo4jdesktop_inst",
-        space:"S_neo4j"
+        label: "C_neo4jdesktop_inst",
+        space: "S_neo4j"
+    },
+	level12: {
+        edgetype: "CONTAINS_PRJ"   
     },
     level2:{ 
-        label:"C_neo4jdesktop_prj",
-        space:"S_neo4j"
+        label: "C_neo4jdesktop_prj",
+        space: "S_neo4j"
     },
     level3:{ 
-        label:"C_neo4j_db_inst",
-        space:"S_neo4j"
+        label: "C_neo4j_db_inst",
+        space: "S_neo4j"
     }, 
     level4:{ 
-        label:"C_neo4j_db_inst_stat",
-        space:"S_neo4j"
+        label: "C_neo4j_db_inst_stat",
+        space: "S_neo4j"
     }
   };
 
@@ -24,9 +27,9 @@
 //================================C_neo4jdesktop_inst======================================================
 with $c as c
 with *, "BTIS_1000000054" as device
-CALL apoc.merge.node([c.level1.label],{identifier:device},{ type:c.level1.label, name:device} ) yield node as d1
-CALL apoc.create.addLabels([d1],[c.level1.space] ) yield node as d
-with d
+CALL apoc.merge.node([c.level1.label],{identifier: device},{ type: c.level1.label, name: device} ) yield node
+CALL apoc.create.addLabels([node],[c.level1.space] ) yield node as d
+with c,d
 
 with *, "w:/" as path
 With *, "projects.json" as prjFile
@@ -39,13 +42,18 @@ with *,  keys(map) as project_ids
 
 UNWIND range(0, size(project_ids) -1 ) as x
 with *, map[project_ids[x]] as prj_map
-MERGE( prj: C_neo4jdesktop_prj {identifier:prj_map.id})
-set prj.type="C_neo4jdesktop_prj"
-set prj.uuid = replace(prj.identifier,"project-","")
-set prj.name=prj_map.name
-set prj.createdAt = prj_map.createdAt
-set prj:S_neo4j
-MERGE(d)-[r:CONTAINS_PRJ]->(prj)
+CALL apoc.merge.node(
+    [c.level2.label],
+    {identifier: prj_map.id}, 
+    { 
+        type: c.level2.label,  
+        uuid: replace(prj_map.id,"project-",""), 
+        name: prj_map.name, 
+        createdAt: prj_map.createdAt 
+    } ) yield node 
+CALL apoc.create.addLabels([node],[c.level2.space] ) yield node as prj
+with c, d, prj
+CALL apoc.merge.relationship(d,c.level12.edgetype,{},{},prj) yield rel
 with COLLECT(prj.identifier) as prjs_id
 return prjs_id;
 
@@ -114,4 +122,4 @@ set dbs.relationshipTypesCount= tointeger(db_map.statistics.relationshipTypesCou
 set dbs:S_neo4j
 MERGE(db)-[e:HAS_STATISTICS]->(dbs)
 With COLLECT(dbs.identifier) as dbss_id
-return dbss_id;
+return dbss_id;return prjs_id
