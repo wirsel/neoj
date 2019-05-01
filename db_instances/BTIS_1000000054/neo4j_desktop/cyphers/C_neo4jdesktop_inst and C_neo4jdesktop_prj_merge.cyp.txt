@@ -1,13 +1,31 @@
 //C_neo4jdesktop_inst + C_neo4jdesktop_prj
 //https://github.com/wirsel/neoj/blob/master/db_instances/BTIS_1000000054/neo4j_desktop/cyphers/C_neo4jdesktop_inst%20and%20C_neo4jdesktop_prj_merge.cyp.txt
 
+:param c => { 
+    level1:{ 
+        label:"C_neo4jdesktop_inst",
+        space:"S_neo4j"
+    },
+    level2:{ 
+        label:"C_neo4jdesktop_prj",
+        space:"S_neo4j"
+    },
+    level3:{ 
+        label:"C_neo4j_db_inst",
+        space:"S_neo4j"
+    }, 
+    level4:{ 
+        label:"C_neo4j_db_inst_stat",
+        space:"S_neo4j"
+    }
+  };
+
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //================================C_neo4jdesktop_inst======================================================
+with $c as c
 with *, "BTIS_1000000054" as device
-MERGE( d: C_neo4jdesktop_inst {identifier:device})
-set d.type="C_neo4jdesktop_inst"
-set d.name=d.identifier
-set d:S_neo4j
+CALL apoc.merge.node([c.level1.label],{identifier:device},{ type:c.level1.label, name:device} ) yield node as d1
+CALL apoc.create.addLabels([d1],[c.level1.space] ) yield node as d
 with d
 
 with *, "w:/" as path
