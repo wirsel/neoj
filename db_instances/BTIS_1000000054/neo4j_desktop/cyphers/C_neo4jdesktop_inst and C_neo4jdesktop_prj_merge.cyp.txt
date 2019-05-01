@@ -6,17 +6,23 @@
         label: "C_neo4jdesktop_inst",
         space: "S_neo4j"
     },
-	level12: {
+	edge12: {
         edgetype: "CONTAINS_PRJ"   
     },
     level2:{ 
         label: "C_neo4jdesktop_prj",
         space: "S_neo4j"
     },
+ 	edge23: {
+        edgetype: "CONTAINS_DB"   
+    },   
     level3:{ 
         label: "C_neo4j_db_inst",
         space: "S_neo4j"
     }, 
+    edge34: {
+        edgetype: "HAS_STATISTICS"   
+    },     
     level4:{ 
         label: "C_neo4j_db_inst_stat",
         space: "S_neo4j"
@@ -53,13 +59,14 @@ CALL apoc.merge.node(
     } ) yield node 
 CALL apoc.create.addLabels([node],[c.level2.space] ) yield node as prj
 with c, d, prj
-CALL apoc.merge.relationship(d,c.level12.edgetype,{},{},prj) yield rel
+CALL apoc.merge.relationship(d,c.edge12.edgetype,{},{},prj) yield rel
 with COLLECT(prj.identifier) as prjs_id
 return prjs_id;
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //================================C_neo4j_db_inst======================================================
-with "w:/" as path
+with $c as c
+with *, "w:/" as path
 with *, "databases.json" as dbFile
 with *, "file:///" as protocol
 Call apoc.load.json(protocol+path+dbFile) yield value as map
@@ -67,24 +74,32 @@ with *,  keys(map) as dbs_map
 
 UNWIND range(0, size(dbs_map) -1 ) as x
 with *, map[dbs_map[x]] as db_map
-MERGE( db: C_neo4j_db_inst {identifier:db_map.id})
-set db.type="C_neo4j_db_inst"
-set db.uuid = replace(db.identifier,"database-","")
-set db.version=db_map.version
-set db.edition=db_map.edition
-set db.projectId=db_map.projectId
-set db.name=db_map.name
-set db.description=db_map.description
-set db.createdAt = db_map.createdAt
-set db.isValidPassword = db_map.isValidPassword
-set db.dirtySettings = db_map.dirtySettings
-set db:S_neo4j
+
+CALL apoc.merge.node(
+    [c.level3.label],
+    {identifier: db_map.id}, 
+	{ 
+       type: c.level3.label,
+       uuid :  replace(db_map.id,"database-",""),
+       version: db_map.version,
+       edition: db_map.edition,
+       projectId: db_map.projectId,
+       name: db_map.name,
+       description: db_map.description,
+       createdAt :  db_map.createdAt,
+       isValidPassword :  db_map.isValidPassword,
+       dirtySettings :  db_map.dirtySettings
+     }) yield node 
+CALL apoc.create.addLabels([node],[c.level3.space] ) yield node as db
+with c,  db
+
 With COLLECT(db.identifier) as dbs_id
 return dbs_id;
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //=======C_neo4jdesktop_prj-[CONTAINS_DB]->C_neo4j_db_inst==
-with "w:/" as path
+with $c as c
+with *, "w:/" as path
 with *, "databases.json" as dbFile
 with *, "file:///" as protocol
 Call apoc.load.json(protocol+path+dbFile) yield value as map
@@ -93,15 +108,17 @@ with *,  keys(map) as dbs_map
 UNWIND range(0, size(dbs_map) -1 ) as x
 with *, map[dbs_map[x]] as db_map
 MATCH( db: C_neo4j_db_inst {identifier:db_map.id})
-with db
+with c, db
 MATCH( prj: C_neo4jdesktop_prj {identifier:db.projectId})
-with db, prj
-MERGE(prj)-[e:CONTAINS_DB]->(db)
-return collect(e);
+with c, db, prj
+CALL apoc.merge.relationship(prj,c.edge23.edgetype,{},{},db) yield rel
+return collect(rel);
+
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //================================C_neo4j_db_inst_stat================
-with "w:/" as path
+with $c as c
+with *, "w:/" as path
 with *, "databases.json" as dbFile
 with *, "file:///" as protocol
 Call apoc.load.json(protocol+path+dbFile) yield value as map
@@ -111,15 +128,21 @@ with *, datetime() as dt
 UNWIND range(0, size(dbs_map) -1 ) as x
 with *, map[dbs_map[x]] as db_map
 MATCH(db:C_neo4j_db_inst {identifier:db_map.id})
-with *
-MERGE(dbs: C_neo4j_db_inst_stat {identifier:apoc.convert.toString(dt)+"/"+db_map.id})
-set dbs.type="C_neo4j_db_inst_stat"
-set dbs.name= dbs.identifier
-set dbs.nodesCount= tointeger(db_map.statistics.nodesCount)
-set dbs.relationshipsCount= tointeger(db_map.statistics.relationshipsCount)
-set dbs.labelsCount= tointeger(db_map.statistics.labelsCount)
-set dbs.relationshipTypesCount= tointeger(db_map.statistics.relationshipTypesCount)
-set dbs:S_neo4j
-MERGE(db)-[e:HAS_STATISTICS]->(dbs)
+with *, apoc.convert.toString(dt)+"/"+db_map.id as id
+CALL apoc.merge.node(
+    [c.level4.label],
+    {identifier: id}, 
+	{ 
+       	type: c.level4.label,
+		name: id,
+        nodesCount: tointeger(db_map.statistics.nodesCount),
+        relationshipsCount: tointeger(db_map.statistics.relationshipsCount),
+        labelsCount: tointeger(db_map.statistics.labelsCount),
+        relationshipTypesCount: tointeger(db_map.statistics.relationshipTypesCount)
+     }) yield node 
+CALL apoc.create.addLabels([node],[c.level4.space] ) yield node as dbs
+with c, dbs, db
+
+CALL apoc.merge.relationship(db,c.edge34.edgetype,{},{},dbs) yield rel
 With COLLECT(dbs.identifier) as dbss_id
-return dbss_id;return prjs_id
+return dbss_id;
