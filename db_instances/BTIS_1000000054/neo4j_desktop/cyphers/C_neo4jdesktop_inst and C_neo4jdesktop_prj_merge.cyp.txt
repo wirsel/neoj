@@ -20,7 +20,7 @@
         label: "C_neo4j_db_inst",
         space: "S_neo4j"
     }, 
-    edge34: {
+ 	edge34: {
         edgetype: "HAS_STATISTICS"   
     },     
     level4:{ 
@@ -107,10 +107,13 @@ with *,  keys(map) as dbs_map
 
 UNWIND range(0, size(dbs_map) -1 ) as x
 with *, map[dbs_map[x]] as db_map
-MATCH( db: C_neo4j_db_inst {identifier:db_map.id})
-with c, db
-MATCH( prj: C_neo4jdesktop_prj {identifier:db.projectId})
-with c, db, prj
+with *, replace('MATCH( db: <<type>> {identifier:$id}) return db','<<type>>',c.level3.label) as cyp
+CALL apoc.cypher.run(cyp,{id:db_map.id}) yield value 
+with c, value.db as db
+with *, replace('MATCH( prj: <<type>> {identifier:$id}) return prj','<<type>>',c.level2.label) as cyp
+CALL apoc.cypher.run(cyp,{id:db.projectId}) yield value 
+with c, db, value.prj as prj
+
 CALL apoc.merge.relationship(prj,c.edge23.edgetype,{},{},db) yield rel
 return collect(rel);
 
@@ -127,7 +130,10 @@ with *, datetime() as dt
 
 UNWIND range(0, size(dbs_map) -1 ) as x
 with *, map[dbs_map[x]] as db_map
-MATCH(db:C_neo4j_db_inst {identifier:db_map.id})
+with *, replace('MATCH( db: <<type>> {identifier:$id}) return db','<<type>>',c.level3.label) as cyp
+CALL apoc.cypher.run(cyp,{id:db_map.id}) yield value 
+with c, dt, db_map, value.db as db
+
 with *, apoc.convert.toString(dt)+"/"+db_map.id as id
 CALL apoc.merge.node(
     [c.level4.label],
