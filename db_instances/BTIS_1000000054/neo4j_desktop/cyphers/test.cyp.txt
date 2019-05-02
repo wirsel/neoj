@@ -32,7 +32,9 @@
         }             
     },
 	spaces: {
-    	neo4j: "S_neo4j"
+    	neo4j: {
+			name: "S_neo4j"
+		}
     },
 	types: { 
 		desktop: {
