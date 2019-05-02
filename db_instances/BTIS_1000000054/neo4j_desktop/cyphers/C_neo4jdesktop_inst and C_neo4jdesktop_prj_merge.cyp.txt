@@ -4,7 +4,10 @@
 :param c => { 
     level1:{ 
         label: "C_neo4jdesktop_inst",
-        space: "S_neo4j"
+        space: "S_neo4j",
+        cyphers: { 
+        	id: 'with *, "BTIS_1000000054" as id'
+        }
     },
 	edge12: {
         edgetype: "CONTAINS_PRJ"   
