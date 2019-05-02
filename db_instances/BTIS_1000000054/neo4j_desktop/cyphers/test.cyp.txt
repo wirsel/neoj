@@ -1,0 +1,224 @@
+//flag for update
+:param c => { 
+    flows:{ 
+    	test_update: [ 
+        	"£cf.steps.mark_for_update"
+        ]
+    },
+	steps:{
+    	mark_for_update:{
+        	variable: "n",
+        	key: "status_nodes2",
+            value: "to be updated",
+            scopes: {
+              	types:	["£cf.types.desktop","£cf.types.project.name","£cf.types.dbms.name"],
+              	nodes: ["£cf.nodes.level1","£cf.nodes.level3.type"],            
+              	edges: ["£cf.edges.desktop_2_project"],
+              	spaces: ["£cf.spaces.neo4j"],  
+              	labels: ["C_ooo"],
+                cyphers: [ 
+                	{ 
+                    	cypher:"MATCH (<<var>>:<<label>>) where <<var>>.<<prop>> = 0 return <<var>>",
+                        replaces: {label:"C_nepo", prop:"stati"},
+                        params: {prop:"stati"}
+                    },
+                 	{ 
+                    	cypher:"MATCH (<<var>>:<<label>>) where <<var>>.<<prop>> = 0 return <<var>>",
+                        replaces: {label:"C_nepomul",prop:"stati"},
+                        params: {prop:"stati"}
+                    }                       
+               	]
+            }
+        }             
+    },
+	spaces: {
+    	neo4j: "S_neo4j"
+    },
+	types: { 
+    	desktop: {
+          	name: "C_neo4jdesktop_inst",
+          	space: "£cf.spaces.neo4j"       
+        },
+    	project: {
+          	name: "C_neo4jdesktop_prj",
+          	space: "£cf.spaces.neo4j"     
+        },
+    	dbms: {
+          	name: "C_neo4j_db_inst",
+          	space: "£cf.spaces.neo4j"         
+        },
+    	statistics: {
+          	name: "C_neo4j_db_inst_stat",
+          	space: "£cf.spaces.neo4j"      
+        }         
+    },  
+	nodes: {
+      	level1:{ 
+      		type: "£cf.types.desktop",
+            labels: ""
+      	},
+        level2:{ 
+            type: "£cf.types.project",
+            labels: ""
+        },
+        level3:{ 
+            type: "£cf.types.dbms",
+            labels: ""
+        }, 
+        level4:{ 
+            type: "£cf.types.statistics",
+            labels: ""
+        }
+    },
+    edges:{
+        desktop_2_project: {
+              out: "£cf.types.desktop",
+              edgetype: "CONTAINS_PRJ", 
+              in: "£cf.types.project"
+        },   
+        project_2_dbms: {
+              out: "£cf.types.project",
+              edgetype: "CONTAINS_DB",  
+              in: "£cf.types.dbms"      
+        },       
+        dbms_2_statistics: {
+              out: "£cf.types.dbms",
+              edgetype: "HAS_STATISTICS", 
+              in: "£cf.types.statistics"         
+        }   
+    }  
+  };
+
+
+with $c as c
+with *, apoc.map.flatten(c) as cf
+with *, datetime() as dt
+MERGE(lg:C_log {identifier:apoc.convert.toString(dt)})
+set lg.name= lg.identifier
+set lg.type="C_log"
+set lg.types=[]
+
+with *, keys(c.steps.mark_for_update.scopes) as scope_keys
+with *, [] as types_for_update 
+
+//-----iterate over config file an colelct which types of nodes must be flagged for update-----
+UNWIND scope_keys as scope_key
+with *, c.steps.mark_for_update.scopes[scope_key] as buf 
+with *, filter(x in buf where not x is null) as scope
+where not scope=[]
+//with *, c.steps.mark_for_update.scopes.nodes as buf1
+
+//==== c.steps.mark_for_update.scopes.labels ====
+CALL apoc.do.when(scope_key='labels', '
+with $cf as cf, $scope as scope
+return scope as types_for_update
+','',{scope: scope, cf:cf}) 
+yield value as val_types
+with *, val_types.types_for_update as types_for_update_labels
+set lg.types=lg.types+[apoc.convert.toString(coalesce(types_for_update_labels,""))]
+set lg.types_for_update_labels=apoc.convert.toString(coalesce(types_for_update_labels,""))
+with lg, c, cf, scope_key, scope, 
+apoc.coll.union(types_for_update, coalesce(types_for_update_labels,[])) as types_for_update
+set lg.types_for_update=apoc.convert.toString(types_for_update)
+
+//==== c.steps.mark_for_update.scopes.spaces ====
+with *
+CALL apoc.do.when(scope_key='spaces', '
+with $cf as cf, $scope as scope
+with *, [x in scope | CASE WHEN x starts with "£cf." THEN coalesce( cf[replace(x,"£cf.","")],x) ELSE x END ] as buf2
+with *, [x in buf2 | CASE WHEN x starts with "£cf." THEN coalesce( cf[replace(x,"£cf.","")+ ".name"],x) ELSE x END ] as types_for_update 
+return types_for_update
+','',{scope: scope, cf:cf}) 
+yield value as val_types
+with *, val_types.types_for_update as types_for_update_spaces
+set lg.types=lg.types+[apoc.convert.toString(coalesce(types_for_update_spaces,""))]
+set lg.types_for_update_spaces=apoc.convert.toString(coalesce(types_for_update_spaces,""))
+with lg, c, cf, scope_key, scope, 
+apoc.coll.union(types_for_update, coalesce(types_for_update_spaces,[])) as types_for_update
+set lg.types_for_update=apoc.convert.toString(types_for_update)
+
+//==== c.steps.mark_for_update.scopes.types ====
+with *
+CALL apoc.do.when(scope_key='types', '
+with $cf as cf, $scope as scope
+with *, [x in scope | CASE WHEN x starts with "£cf." THEN coalesce( cf[replace(x,"£cf.","")],x) ELSE x END ] as buf2
+with *, [x in buf2 | CASE WHEN x starts with "£cf." THEN coalesce( cf[replace(x,"£cf.","")+ ".name"],x) ELSE x END ] as types_for_update 
+return types_for_update
+','',{scope: scope, cf:cf}) 
+yield value as val_types
+with *, val_types.types_for_update as types_for_update_types
+set lg.types=lg.types+[apoc.convert.toString(coalesce(types_for_update_types,""))]
+set lg.types_for_update_types=apoc.convert.toString(coalesce(types_for_update_types,""))
+with lg, c, cf, scope_key, scope, 
+apoc.coll.union(types_for_update, coalesce(types_for_update_types,[])) as types_for_update
+set lg.types_for_update=apoc.convert.toString(types_for_update)
+
+//==== c.steps.mark_for_update.scopes.nodes ====
+with *
+CALL apoc.do.when(scope_key='nodes', '
+with $cf as cf, $scope as scope
+with *, [x in scope | CASE WHEN x starts with "£cf." THEN coalesce(cf[replace(x,"£cf.","")],x) ELSE x END ] as buf2 
+with *, [x in buf2 | CASE WHEN x starts with "£cf.nodes" THEN coalesce( cf[replace(x,"£cf.","")+ ".type"],x) ELSE x END ] as buf3 
+with *, [x in buf3 | CASE WHEN x starts with "£cf.types" THEN coalesce( cf[replace(x,"£cf.","")],x)  ELSE x END ] as buf4 
+with *, [x in buf4 | CASE WHEN x starts with "£cf.types" THEN coalesce( cf[replace(x,"£cf.","")+ ".name"],x)  ELSE x END ] as types_for_update 
+return types_for_update
+','',{scope: scope, cf:cf}) 
+yield value as val_nodes
+with *, val_nodes.types_for_update as types_for_update_nodes
+set lg.types=lg.types+[apoc.convert.toString(coalesce(types_for_update_nodes,""))]
+set lg.types_for_update_nodes=apoc.convert.toString(coalesce(types_for_update_nodes,""))
+with lg, c, cf, scope_key, scope, 
+apoc.coll.union(types_for_update, coalesce(types_for_update_nodes,[])) as types_for_update
+with lg, c, cf, 
+COLLECT(types_for_update) as types_for_update_nested_list
+
+with *,apoc.coll.toSet(apoc.coll.flatten(types_for_update_nested_list) ) as types_for_update
+Set lg.types_for_update=apoc.convert.toString(types_for_update)
+
+//----- flag all relevant nodes to be updated
+Set lg.step=coalesce(lg.step,0)+1
+with *, c.steps.mark_for_update.key as key, c.steps.mark_for_update.value as value 
+UNWIND range(0, size(types_for_update)-1) as x
+with *, types_for_update[x] as type
+with * , replace(replace( 'MATCH(<<var>>:<<type>>) where not coalesce(properties(<<var>>)[$key],\'\')=$value return <<var>>','<<type>>',type),'<<var>>',c.steps.mark_for_update.variable) as iteration
+with * , replace('CALL apoc.create.setProperty(<<var>>, $key, $value) yield node return node','<<var>>',c.steps.mark_for_update.variable) as action
+set lg.actions = coalesce(lg.actions,[])+[action]
+set lg.iterations = coalesce(lg.iterations,[])+[iteration]
+set lg.key = key
+set lg.value = value
+with *
+CALL apoc.periodic.iterate(iteration, action, {params:{key:key,value:value}, batchSize:10000, iterateList:true}) yield batches, total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations,wasTerminated
+with *, {batches: batches, total: total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries: retries, errorMessages: errorMessages, batch: batch, operations: operations, wasTerminated: wasTerminated} as res
+with lg, c,cf, COLLECT(res) as  results_types
+unwind apoc.coll.sort(keys(lg)) as key
+return key, properties(lg)[key];
+
+with $c as c
+with *, apoc.map.flatten(c) as cf
+with *, datetime() as dt
+MERGE(lg:C_log {identifier:apoc.convert.toString(dt)})
+set lg.name= lg.identifier
+set lg.type="C_log"
+set lg.types=[]
+
+with *, c.steps.mark_for_update.scopes.cyphers as cyphers
+with *, c.steps.mark_for_update.key as key, c.steps.mark_for_update.value as value
+UNWIND cyphers as cypher_map
+with *, cypher_map.cypher as cyp_temp 
+with *, reduce( s=cyp_temp, key in keys(cypher_map.replaces) | replace(s,"<<"+key+">>", cypher_map.replaces[key] ) ) as cc
+with *, replace(cc,"<<var>>", c.steps.mark_for_update.variable ) as ttt
+with *, replace(ttt,"£", "$" ) as iteration 
+
+with * , replace('CALL apoc.create.setProperty(<<var>>, $key, $value) yield node return node','<<var>>',c.steps.mark_for_update.variable) as action
+set lg.actions = coalesce(lg.actions,[])+[action]
+set lg.iterations = coalesce(lg.iterations,[])+[iteration]
+set lg.key = key
+set lg.value = value
+
+with *, apoc.map.merge({key:key, value:value},cypher_map.params) as params
+
+CALL apoc.periodic.iterate(iteration, action, {params:params, batchSize:10000, iterateList:true}) yield batches, total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations,wasTerminated
+with *, {batches: batches, total: total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries: retries, errorMessages: errorMessages, batch: batch, operations: operations, wasTerminated: wasTerminated} as res
+with lg, c,cf, COLLECT(res) as  results_types
+unwind apoc.coll.sort(keys(lg)) as key
+return key, properties(lg)[key]
