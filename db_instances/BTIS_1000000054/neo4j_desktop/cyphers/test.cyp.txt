@@ -2,7 +2,7 @@
 :param c => { 
     flows:{ 
     	test_update: [ 
-        	"£cf.steps.mark_for_update"
+        "£cf.steps.mark_for_update"
         ]
     },
 	steps:{
@@ -18,14 +18,14 @@
               	labels: ["C_ooo"],
                 cyphers: [ 
                 	{ 
-                    	cypher:"MATCH (<<var>>:<<label>>) where <<var>>.<<prop>> = 0 return <<var>>",
-                        replaces: {label:"C_nepo", prop:"stati"},
-                        params: {prop:"stati"}
-                    },
-                 	{ 
-                    	cypher:"MATCH (<<var>>:<<label>>) where <<var>>.<<prop>> = 0 return <<var>>",
-                        replaces: {label:"C_nepomul",prop:"stati"},
-                        params: {prop:"stati"}
+						cypher:"MATCH (<<var>>:<<label>>) where <<var>>.<<prop>> = 0 return <<var>>",
+						replaces: {label:"C_nepo", prop:"stati"},
+						params: {prop:"stati"}
+					},
+					{ 
+						cypher:"MATCH (<<var>>:<<label>>) where <<var>>.<<prop>> = 0 return <<var>>",
+						replaces: {label:"C_nepomul",prop:"stati"},
+						params: {prop:"stati"}
                     }                       
                	]
             }
@@ -35,9 +35,9 @@
     	neo4j: "S_neo4j"
     },
 	types: { 
-    	desktop: {
-          	name: "C_neo4jdesktop_inst",
-          	space: "£cf.spaces.neo4j"       
+		desktop: {
+			name: "C_neo4jdesktop_inst",
+			space: "£cf.spaces.neo4j"       
         },
     	project: {
           	name: "C_neo4jdesktop_prj",
