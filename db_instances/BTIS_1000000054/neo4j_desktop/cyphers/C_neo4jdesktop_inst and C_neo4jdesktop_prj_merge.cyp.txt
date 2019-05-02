@@ -31,6 +31,24 @@
         space: "S_neo4j"
     }
   };
+  
+ // Step: mark_for_update
+//with $c as c
+with *, apoc.map.flatten(c) as cf
+with *, c.steps.mark_for_update.types as buf1
+with *, [x in buf1 | CASE WHEN left(x,4)="$cf." THEN coalesce(cf[replace(x,"$cf.","")],x) ELSE x END ] as buf2
+with *, [x in buf2 | CASE WHEN left(x,4)="$cf." THEN coalesce(cf[replace(x,"$cf.","")+".name"],x) ELSE x END ] as types_for_update
+
+with *, c.steps.mark_for_update.key as key, c.steps.mark_for_update.value as value 
+UNWIND range(0, size(types_for_update)-1) as x
+with *, types_for_update[x] as type
+with * , replace( 'MATCH(n:<<type>>) where not properties(n)[$key]=$value return n','<<type>>',type) as iteration
+with * , 'CALL apoc.create.setProperty(n, $key, $value) yield node return node' as action
+
+CALL apoc.periodic.iterate(iteration, action, {params:{key:key,value:value}, batchSize:10000, iterateList:true}) yield batches, total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations,wasTerminated
+with *, {batches: batches, total: total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries: retries, errorMessages: errorMessages, batch: batch, operations: operations, wasTerminated: wasTerminated} as res
+with c,cf, COLLECT(res) as  results_types
+return results_types;
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //================================C_neo4jdesktop_inst======================================================
