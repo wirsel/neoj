@@ -8,7 +8,8 @@ with cx, [
 'with cx, cx.cf["nodes.level"+cx.level+".type"] as link',
 'with cx, CASE WHEN link starts with "£cf." THEN coalesce(cx.cf[replace(link,"£cf.","")],link) ELSE link END as buf',
 'with cx, CASE WHEN buf starts with "£cf." THEN coalesce(cx.cf[ replace(buf,"£cf.","")+".name"],buf) ELSE buf END as type',
-'with apoc.map.merge(cx, {type:type}) as cx',
+'with apoc.map.merge(cx, {type:type}) as buf1',
+'with buf1 as cx',
 'return cx'
 ] as cyp_lines
 with apoc.map.merge( cx, {cyp_lines:cyp_lines }) as cx
@@ -136,17 +137,17 @@ set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["LINES merged = " +tostring(size(nLp_after_list))]
 
 //---- MERGE C_cyp_line-------
-//with *
-//UNWIND range(0,size(cx.cyp_lines)-1) as x
-//with *, cx.cyp_lines[x] as lineStr
-//MERGE(line:C_cyp_line {identifier: tostring(x)+"/"+lineStr})
-//on create set line.name = line.identifier, line.line=lineStr,  line.type = "C_cyp_line", line.index = x, line.status = "new", line.createdAt=cx.dt
-//on match set line.status = "actual" 
-//with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, line order by line.index 
-//with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before,
-//COLLECT(line) as lines_after
-//set nLg.steps=nLg.steps + [size(nLg.steps+1)]
-//set nLg.comments=nLg.comments + ["LINES merged = " +tostring(size(lines_after))]
+with *
+UNWIND range(0,size(cx.cyp_lines)-1) as x
+with *, cx.cyp_lines[x] as lineStr
+MERGE(line:C_cyp_line {identifier: lineStr})
+on create set line.name = line.identifier, line.line=lineStr,  line.type = "C_cyp_line", line.index = x, line.status = "new", line.createdAt=cx.dt
+on match set line.status = "actual" 
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, line order by line.index 
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list,
+COLLECT(line) as lines_after
+set nLg.steps=nLg.steps + [size(nLg.steps+1)]
+set nLg.comments=nLg.comments + ["C_cyp_line merged = " +tostring(size(lines_after))]
 
 //---- MERGE HAS_LINE-------
 with *
@@ -155,7 +156,7 @@ with *, nLp_after_list[x] as line
 MERGE(nCyp)-[e:HAS_LINE]->(line)
 on create set e.index = x, e.status = "new", e.createdAt = cx.dt
 on match set e.index = x, e.status = "actual"
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list,
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, lines_after,
 COLLECT(e) as HAS_LINEs_after
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["HAS_LINE merged = " +tostring(size(HAS_LINEs_after))]
@@ -168,11 +169,24 @@ with *, nLp_after_list[x+1] as next
 MERGE(this)-[e:NEXT_LINE]->(next)
 on create set e.status = "new", e.createdAt = cx.dt, e.index=this.index
 on match set e.status = "actual"
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after,
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, lines_after, 
 COLLECT(e) as NEXT_LINEs_after
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["NEXT_LINE merged = " +tostring(size(NEXT_LINEs_after))]
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
+
+//---- MERGE HAS_POS-------
+with *
+UNWIND range(0,size(nLp_after_list)-1) as x
+with *, nLp_after_list[x] as nLp
+MATCH(line:C_cyp_line {identifier:nLp.line})
+MERGE(line)-[e:HAS_POS]->(nLp)
+on create set e.index = x, e.status = "new", e.createdAt = cx.dt
+on match set e.index = nLp.index, e.status = "actual"
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after,
+COLLECT(e) as HAS_POSs_after
+set nLg.steps=nLg.steps + [size(nLg.steps+1)]
+set nLg.comments=nLg.comments + ["HAS_POS merged = " +tostring(size(HAS_POSs_after))]
 
 //---- check not updated C_cyp_line_pos  nodes-------
 with *, filter( x in nline_before_lst where x.status= "to be updated" ) as before_outdated
@@ -185,7 +199,7 @@ return count(items) as cnt
 ','return 0', {before_outdated: before_outdated}) YIELD value
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["C_cyp_line_pos outdated = "+ apoc.convert.toString([x in before_outdated| x.index])]
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
 
 //---- check not updated C_cyp_line_pos  nodes-------
 //with *, filter( x in nline_before_lst where x.status= "to be updated" ) as before_outdated
@@ -211,7 +225,7 @@ return count(items) as cnt
 ','return 0', {before_outdated: before_outdated}) YIELD value
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["HAS_LINES outdated = "+ apoc.convert.toString([x in before_outdated| x.index])]
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
 
 //---- check not updated NEXT_LINEs_before edges-------
 with *, filter( x in NEXT_LINEs_before where x.status= "to be updated" ) as before_outdated
@@ -225,7 +239,8 @@ return count(items) as cnt
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["NEXT_LINE outdated = "+ apoc.convert.toString([x in before_outdated| x.index])]
 
-with *
-unwind nLp_after_list as line
-return nCyp, line
+//with *
+//unwind nLp_after_list as line
+
+return nCyp, nLp_after_list,lines_after
 //return  this.identifier, next.identifier
