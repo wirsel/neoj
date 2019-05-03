@@ -1,4 +1,5 @@
-//C_cyp_query-merge
+//C_cyp_query merge
+//https://github.com/wirsel/neoj/blob/master/cyphers/C_cyp_query/C_cyp_query-merge.cyp.txt
 with { dt: datetime() } as cx
 with apoc.map.merge( cx ,{identifier: "nodes.level.type > types.type.name"} ) as cx  
 with apoc.map.merge( cx ,{delete: false} ) as cx
