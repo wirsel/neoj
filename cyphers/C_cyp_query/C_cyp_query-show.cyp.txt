@@ -1,6 +1,6 @@
 //C_cyp_query show
 //https://github.com/wirsel/neoj/blob/master/cyphers/C_cyp_query/C_cyp_query-show.cyp.txt
-match(nCyp:C_cyp_query)
-OPTIONAL match(nCyp)-[:HAS_LINE]->(nLp:C_cyp_line)
-OPTIONAL match(nLp)<-[:HAS_POS]->(nL:C_cyp_line)
+match(nCyp: C_cyp_query)
+OPTIONAL match(nCyp)-[:HAS_LINE]->(nLp: C_cyp_line_pos)
+OPTIONAL match(nLp)<-[:HAS_POS]-(nL: C_cyp_line)
 return *
