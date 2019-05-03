@@ -131,9 +131,9 @@ on create set nLp.name = nLp.identifier, nLp.line=lineStr,  nLp.type = "C_cyp_li
 on match set nLp.status = "actual" 
 with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp order by nLp.index 
 with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before,
-COLLECT(nLp) as lines_after
+COLLECT(nLp) as nLp_after_list
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
-set nLg.comments=nLg.comments + ["LINES merged = " +tostring(size(lines_after))]
+set nLg.comments=nLg.comments + ["LINES merged = " +tostring(size(nLp_after_list))]
 
 //---- MERGE C_cyp_line-------
 //with *
@@ -150,29 +150,29 @@ set nLg.comments=nLg.comments + ["LINES merged = " +tostring(size(lines_after))]
 
 //---- MERGE HAS_LINE-------
 with *
-UNWIND range(0,size(lines_after)-1) as x
-with *, lines_after[x] as line
+UNWIND range(0,size(nLp_after_list)-1) as x
+with *, nLp_after_list[x] as line
 MERGE(nCyp)-[e:HAS_LINE]->(line)
 on create set e.index = x, e.status = "new", e.createdAt = cx.dt
 on match set e.index = x, e.status = "actual"
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, lines_after,
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list,
 COLLECT(e) as HAS_LINEs_after
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["HAS_LINE merged = " +tostring(size(HAS_LINEs_after))]
 
 //---- MERGE NEXT_LINE-------
 with *
-UNWIND range(0, size(lines_after) -2) as x
-with *, lines_after[x] as this
-with *, lines_after[x+1] as next
+UNWIND range(0, size(nLp_after_list) -2) as x
+with *, nLp_after_list[x] as this
+with *, nLp_after_list[x+1] as next
 MERGE(this)-[e:NEXT_LINE]->(next)
 on create set e.status = "new", e.createdAt = cx.dt, e.index=this.index
 on match set e.status = "actual"
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, lines_after, HAS_LINEs_after,
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after,
 COLLECT(e) as NEXT_LINEs_after
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["NEXT_LINE merged = " +tostring(size(NEXT_LINEs_after))]
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, lines_after, HAS_LINEs_after, NEXT_LINEs_after
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after
 
 //---- check not updated C_cyp_line_pos  nodes-------
 with *, filter( x in nline_before_lst where x.status= "to be updated" ) as before_outdated
@@ -185,7 +185,7 @@ return count(items) as cnt
 ','return 0', {before_outdated: before_outdated}) YIELD value
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["C_cyp_line_pos outdated = "+ apoc.convert.toString([x in before_outdated| x.index])]
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, lines_after, HAS_LINEs_after, NEXT_LINEs_after
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after
 
 //---- check not updated C_cyp_line_pos  nodes-------
 //with *, filter( x in nline_before_lst where x.status= "to be updated" ) as before_outdated
@@ -211,7 +211,7 @@ return count(items) as cnt
 ','return 0', {before_outdated: before_outdated}) YIELD value
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["HAS_LINES outdated = "+ apoc.convert.toString([x in before_outdated| x.index])]
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, lines_after, HAS_LINEs_after, NEXT_LINEs_after
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after
 
 //---- check not updated NEXT_LINEs_before edges-------
 with *, filter( x in NEXT_LINEs_before where x.status= "to be updated" ) as before_outdated
@@ -226,6 +226,6 @@ set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["NEXT_LINE outdated = "+ apoc.convert.toString([x in before_outdated| x.index])]
 
 with *
-unwind lines_after as line
+unwind nLp_after_list as line
 return nCyp, line
 //return  this.identifier, next.identifier
