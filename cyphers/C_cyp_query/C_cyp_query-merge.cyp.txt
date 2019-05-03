@@ -1,4 +1,4 @@
-//store cypher
+//C_cyp_query-merge
 with { dt: datetime() } as cx
 with apoc.map.merge( cx ,{identifier: "nodes.level.type > types.type.name"} ) as cx  
 with apoc.map.merge( cx ,{delete: false} ) as cx
