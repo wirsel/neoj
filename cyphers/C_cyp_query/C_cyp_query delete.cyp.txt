@@ -1,0 +1,55 @@
+//delete C_cyp_query
+with {identifier: "nodes.level.type > types.type.name", dt: datetime()} as cx
+
+CREATE(lg:C_log {identifier: apoc.convert.toString(cx.dt)})
+set lg.name = lg.identifier
+set lg.createdAt=cx.dt 
+set lg.type="C_log"
+set lg.steps=[]
+set lg.comments=[]
+set lg.steps=lg.steps + [size(lg.steps+1)]
+set lg.comments=lg.comments + ["lg created"]
+set lg.cx=apoc.convert.toString(cx)
+
+with *
+OPTIONAL MATCH(cyp:C_cyp_query {identifier:cx.identifier})
+with cx, lg,
+COLLECT(cyp) as cyp_nodes
+set lg.steps=lg.steps + [size(lg.steps+1)]
+set lg.comments=lg.comments + ["C_cyp_query found = cnt = " +tostring (size(cyp_nodes))] 
+
+with *
+UNWIND cyp_nodes as cyp
+OPTIONAL MATCH(cyp)-[e:HAS_LINE]->(l:C_cyp_line)
+with cx, lg, cyp_nodes,
+COLLECT(l) as cyp_line_nodes
+set lg.steps=lg.steps + [size(lg.steps+1)]
+set lg.comments=lg.comments + ["C_cyp_line found = cnt = " +tostring (size(cyp_line_nodes))] 
+
+with *
+CALL apoc.do.when(size(cyp_line_nodes)>0,'
+with $nodes as nodes
+UNWIND  range(0, size(nodes)-1)  as x
+with x, nodes[x] as node
+detach delete node
+with  
+COLLECT(x) as coll
+return size(coll) as cnt
+','return 0 as cnt',{ nodes: cyp_line_nodes}) yield value as valuelines
+set lg.steps=lg.steps + [size(lg.steps+1)]
+set lg.comments=lg.comments + ["C_cyp_line deleted = cnt = " +tostring (valuelines.cnt)] 
+
+with *
+CALL apoc.do.when(size(cyp_nodes)>0,'
+with $nodes as nodes
+UNWIND  range(0, size(nodes)-1)  as x
+with x, nodes[x] as node
+detach delete node
+with 
+COLLECT(x) as coll
+return size(coll) as cnt
+','return 0 as cnt',{ nodes: cyp_nodes}) yield value as valuequery
+set lg.steps=lg.steps + [size(lg.steps+1)]
+set lg.comments=lg.comments + ["C_cyp_query deleted = cnt = " +tostring (valuequery.cnt)] 
+
+return 0
