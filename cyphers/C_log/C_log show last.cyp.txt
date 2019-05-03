@@ -1,0 +1,5 @@
+//show las log
+match(lg:C_log)
+with lg order by lg.identifier desc limit 1
+unwind apoc.coll.sort(keys(lg)) as key
+return key, properties(lg)[key]
