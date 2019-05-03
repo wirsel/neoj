@@ -73,31 +73,31 @@ set l.status = "to be updated"
 set ee.status = "to be updated"
 with cx, nLg, nCyp, l order by l.index
 with cx, nLg, nCyp,
-COLLECT(l) as lines_before
+COLLECT(l) as nline_before_lst
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
-set nLg.comments=nLg.comments + ["C_cyp_line flagged for update = cnt = " +tostring(size(lines_before))]
+set nLg.comments=nLg.comments + ["C_cyp_line flagged for update = cnt = " +tostring(size(nline_before_lst))]
 
 //---- flag existing C_cyp_line nodes and HAS_LINE edges for update-------
 with *
 OPTIONAL MATCH(cyp)-[ee:HAS_LINE]->(l:C_cyp_line)
 set ee.status = "to be updated"
-with cx, nLg, nCyp, lines_before, ee, l order by l.index
-with cx, nLg, nCyp, lines_before, 
+with cx, nLg, nCyp, nline_before_lst, ee, l order by l.index
+with cx, nLg, nCyp, nline_before_lst, 
 COLLECT(ee) as HAS_LINEs_before
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["HAS_LINE flagged for update = cnt = " +tostring(size(HAS_LINEs_before))]
 
 //---- flag existing NEXT_LINE edges for update-------
 with *
-CALL apoc.do.when(size(lines_before)>0,'
-UNWIND $lines_before as line_before
-OPTIONAL MATCH (line_before)-[eee:NEXT_LINE]->(:C_cyp_line)
-Set eee.status= "to be updated"
-return COLLECT(eee) as NEXT_LINEs_before
-',
-'with [] as NEXT_LINEs_before return NEXT_LINEs_before', 
-{lines_before:lines_before} ) YIELD value
-with *, value.NEXT_LINEs_before as NEXT_LINEs_before
+CALL apoc.do.when(size(nline_before_lst)>0,replace(replace('
+UNWIND $nList as this
+OPTIONAL MATCH (n)-[e:<<edgetype>>]->(other:<<other_type>>)
+Set e.status= "to be updated"
+return COLLECT(e) as eList
+','<<edgetype>>','NEXT_LINE'),'<<other_type>>','C_cyp_line'),
+'with [] as eList return eList', 
+{nList:nline_before_lst} ) YIELD value
+with *, value.eList as NEXT_LINEs_before
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["NEXT_LINE flagged for update = cnt = " + toString(size(NEXT_LINEs_before))]
 
@@ -108,8 +108,8 @@ with *, cx.cyp_lines[x] as lineStr
 MERGE(line:C_cyp_line {identifier: tostring(x)+"/"+lineStr})
 on create set line.name = line.identifier, line.line=lineStr,  line.type = "C_cyp_line", line.index = x, line.status = "new", line.createdAt=cx.dt
 on match set line.status = "actual" 
-with cx, nLg, nCyp, lines_before, HAS_LINEs_before, NEXT_LINEs_before, line order by line.index 
-with cx, nLg, nCyp, lines_before, HAS_LINEs_before, NEXT_LINEs_before,
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, line order by line.index 
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before,
 COLLECT(line) as lines_after
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["LINES merged = " +tostring(size(lines_after))]
@@ -121,7 +121,7 @@ with *, lines_after[x] as line
 MERGE(cyp)-[e:HAS_LINE]->(line)
 on create set e.index = x, e.status = "new", e.createdAt = cx.dt
 on match set e.index = x, e.status = "actual"
-with cx, nLg, nCyp, lines_before, HAS_LINEs_before, NEXT_LINEs_before, lines_after,
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, lines_after,
 COLLECT(e) as HAS_LINEs_after
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["HAS_LINE merged = " +tostring(size(HAS_LINEs_after))]
@@ -134,14 +134,14 @@ with *, lines_after[x+1] as next
 MERGE(this)-[e:NEXT_LINE]->(next)
 on create set e.status = "new", e.createdAt = cx.dt, e.index=this.index
 on match set e.status = "actual"
-with cx, nLg, nCyp, lines_before, HAS_LINEs_before, NEXT_LINEs_before, lines_after, HAS_LINEs_after,
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, lines_after, HAS_LINEs_after,
 COLLECT(e) as NEXT_LINEs_after
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["NEXT_LINE merged = " +tostring(size(NEXT_LINEs_after))]
-with cx, nLg, nCyp, lines_before, HAS_LINEs_before, NEXT_LINEs_before, lines_after, HAS_LINEs_after, NEXT_LINEs_after
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, lines_after, HAS_LINEs_after, NEXT_LINEs_after
 
 //---- check not updated C_cyp_line nodes-------
-with *, filter( x in lines_before where x.status= "to be updated" ) as before_outdated
+with *, filter( x in nline_before_lst where x.status= "to be updated" ) as before_outdated
 CALL apoc.do.when(size(before_outdated)>0,' 
 with $before_outdated as before_outdated
 UNWIND before_outdated as item
@@ -151,7 +151,7 @@ return count(items) as cnt
 ','return 0', {before_outdated: before_outdated}) YIELD value
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["LINES outdated = "+ apoc.convert.toString([x in before_outdated| x.index])]
-with cx, nLg, nCyp, lines_before, HAS_LINEs_before, NEXT_LINEs_before, lines_after, HAS_LINEs_after, NEXT_LINEs_after
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, lines_after, HAS_LINEs_after, NEXT_LINEs_after
 
 //---- check not updated HAS_LINEs_before edges-------
 with *, filter( x in HAS_LINEs_before where x.status= "to be updated" ) as before_outdated
@@ -164,7 +164,7 @@ return count(items) as cnt
 ','return 0', {before_outdated: before_outdated}) YIELD value
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["HAS_LINES outdated = "+ apoc.convert.toString([x in before_outdated| x.index])]
-with cx, nLg, nCyp, lines_before, HAS_LINEs_before, NEXT_LINEs_before, lines_after, HAS_LINEs_after, NEXT_LINEs_after
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, lines_after, HAS_LINEs_after, NEXT_LINEs_after
 
 //---- check not updated NEXT_LINEs_before edges-------
 with *, filter( x in NEXT_LINEs_before where x.status= "to be updated" ) as before_outdated
