@@ -2,7 +2,7 @@
 //https://github.com/wirsel/neoj/blob/master/cyphers/C_cyp_query/C_cyp_query-merge.cyp.txt
 with { dt: datetime() } as cx
 with apoc.map.merge( cx ,{identifier: "nodes.level.type > types.type.name"} ) as cx  
-with apoc.map.merge( cx ,{delete: false} ) as cx
+with apoc.map.merge( cx ,{delete: true} ) as cx
 with cx, [
 'with $cx as cx',
 'with cx, cx.cf["nodes.level"+cx.level+".type"] as link',
@@ -200,55 +200,47 @@ return items as items
 
 with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
 
+
+
 //---- check not updated HAS_LINEs_before edges-------
-with *, filter( x in HAS_LINEs_before where x.status= "to be updated" ) as list
-CALL apoc.do.when(size(list)>0,' 
+with *, [x in HAS_LINEs_before | id(x) ] as idHAS_LINEs_before
+with *, [x in NEXT_LINEs_before | id(x) ] as idNEXT_LINEs_before
+with *, [x in HAS_POSs_before | id(x) ] as idHAS_POSs_before
+set nLg.idHAS_LINEs_before =coalesce(apoc.convert.toString(apoc.coll.sort(idHAS_LINEs_before)),"[]")
+set nLg.idNEXT_LINEs_before =coalesce(apoc.convert.toString(apoc.coll.sort(idNEXT_LINEs_before)),"[]")
+set nLg.idHAS_POSs_before = coalesce(apoc.convert.toString(apoc.coll.sort(idHAS_POSs_before)),"[]")
+
+with *, [
+	{list: idHAS_LINEs_before, edgetype:"HAS_LINE"},
+    {list: idNEXT_LINEs_before, edgetype:"NEXT_LINE" },
+    {list: idHAS_POSs_before, edgetype:"HAS_POS"}
+    ]  as inputs
+
+UNWIND range(0, size(inputs)-1) as x
+with *, inputs[x] as map
+set nLg.map = coalesce(apoc.convert.toString(map),"{}")
+with *
+//with *, filter( x in HAS_LINEs_before where x.status= "to be updated" ) as list
+CALL apoc.do.when(size(map.list)>0,' 
 with $nLg as nLg, $list as list
+CALL apoc.get.rels(list) yield rel
+with nLg, 
+COLLECT(rel) as list
+with nLg, filter(x in list where x.status= "to be updated") as list
 UNWIND list as item
 Set item.status = "outdated"
 with nLg, 
 COLLECT(item) as items
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
-set nLg.list__HAS_LINE__outdated =coalesce(apoc.convert.toString(apoc.coll.sort([x in items | id(x) ])),"[]")
-set nLg.comments=nLg.comments + ["HAS_LINES outdated = "+ apoc.convert.toString([x in items| x.index])]
+set nLg.comments=nLg.comments + [$text + apoc.convert.toString(apoc.coll.sort([x in items| x.index]))]
+with nLg, items, "list__"+$text+"__outdated" as log_prop
+with nLg, items, log_prop, coalesce(apoc.convert.toString(apoc.coll.sort([x in items | id(x) ])),"[]") as val
+CALL apoc.create.setProperty([nLg],log_prop,val) yield node 
 return items as items
-','return []', {nLg: nLg, list: list}) YIELD value
-
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
-
-//---- check not updated NEXT_LINEs_before edges-------
-with *, filter( x in NEXT_LINEs_before where x.status= "to be updated" ) as list
-CALL apoc.do.when(size(list)>0,' 
-with $nLg as nLg, $list as list
-UNWIND list as item
-Set item.status = "outdated"
-with nLg, 
-COLLECT(item) as items
-set nLg.steps=nLg.steps + [size(nLg.steps+1)]
-set nLg.list__NEXT_LINE__outdated =coalesce(apoc.convert.toString(apoc.coll.sort([x in items | id(x) ])),"[]")
-set nLg.comments=nLg.comments + ["NEXT_LINE outdated = "+ apoc.convert.toString([x in items| x.index])]
-return items as items
-','return []', {nLg: nLg, list: list}) YIELD value
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
-
-//---- check not updated HAS_POSs_before edges-------
-with *, filter( x in HAS_POSs_before where x.status= "to be updated" ) as list
-CALL apoc.do.when(size(list)>0,' 
-with $nLg as nLg, $list as list
-UNWIND list as item
-Set item.status = "outdated"
-with nLg, 
-COLLECT(item) as items
-set nLg.steps=nLg.steps + [size(nLg.steps+1)]
-set nLg.list__HAS_POS__outdated =coalesce(apoc.convert.toString(apoc.coll.sort([x in items | id(x) ])),"[]")
-set nLg.comments=nLg.comments + ["HAS_POS outdated = "+ apoc.convert.toString([x in items| x.index])]
-return items as items
-','return []', {nLg: nLg, list: list}) YIELD value
-
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
-
-//with *
-//unwind nLp_after_list as line
+','return []', 
+{nLg: nLg, list: map.list, text: map.edgetype }) YIELD value
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after,
+COLLECT(x) as coll
 
 return nCyp, nLp_after_list,lines_after
-//return  this.identifier, next.identifier
+//return  this.identifier, next.identifier1
