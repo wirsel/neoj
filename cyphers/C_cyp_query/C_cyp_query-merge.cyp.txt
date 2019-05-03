@@ -8,8 +8,7 @@ with cx, [
 'with cx, cx.cf["nodes.level"+cx.level+".type"] as link',
 'with cx, CASE WHEN link starts with "£cf." THEN coalesce(cx.cf[replace(link,"£cf.","")],link) ELSE link END as buf',
 'with cx, CASE WHEN buf starts with "£cf." THEN coalesce(cx.cf[ replace(buf,"£cf.","")+".name"],buf) ELSE buf END as type',
-'with apoc.map.merge(cx, {type:type}) as buf1',
-'with buf1 as cx',
+'with apoc.map.merge(cx, {type:type}) as cx',
 'return cx'
 ] as cyp_lines
 with apoc.map.merge( cx, {cyp_lines:cyp_lines }) as cx
@@ -25,7 +24,7 @@ set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["nLg created"]
 set nLg.cx=apoc.convert.toString(cx)
 
-//---- delete existing  C_cyp_line nodes and C_cyp_line  node  if required---------
+//---- delete existing  C_cyp_line_pos nodes  if required---------
 with cx, nLg
 CALL apoc.do.when(cx.delete = true,'
 with $cx as cx, $nLg as nLg
@@ -69,58 +68,49 @@ set nLg.comments=nLg.comments + ["cyp merged = " + cx.identifier]
 
 //---- flag existing C_cyp_line_pos nodes for update-------
 with *
-OPTIONAL MATCH(nCyp)-[ee:HAS_LINE]->(l:C_cyp_line_pos)
-set l.status = "to be updated"
-set ee.status = "to be updated"
-with cx, nLg, nCyp, l order by l.index
+OPTIONAL MATCH(nCyp)-[:HAS_LINE]->(lp:C_cyp_line_pos)
+set lp.status = "to be updated"
+with cx, nLg, nCyp, lp order by lp.index
 with cx, nLg, nCyp,
-COLLECT(l) as nline_before_lst
+COLLECT(lp) as nline_before_lst
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
+set nLg.list__C_cyp_line_pos__before =apoc.convert.toString(apoc.coll.sort([x in nline_before_lst | id(x) ]))
 set nLg.comments=nLg.comments + ["C_cyp_line_pos flagged for update = cnt = " +tostring(size(nline_before_lst))]
 
-//---- flag existing C_cyp_line nodes for update-------
-//with *
-//OPTIONAL MATCH(nCyp)-[ee:HAS_LINE]->(l:C_cyp_line)
-//set l.status = "to be updated"
-//set ee.status = "to be updated"
-//with cx, nLg, nCyp, l order by l.index
-//with cx, nLg, nCyp,
-//COLLECT(l) as nline_before_lst
-//set nLg.steps=nLg.steps + [size(nLg.steps+1)]
-//set nLg.comments=nLg.comments + ["C_cyp_line flagged for update = cnt = " //+tostring(size(nline_before_lst))]
-
-//---- flag existing C_cyp_line_pos nodes and HAS_LINE edges for update-------
+//---- flag existing HAS_LINE edges for update-------
 with *
-OPTIONAL MATCH(nCyp)-[ee:HAS_LINE]->(l:C_cyp_line_pos)
-set ee.status = "to be updated"
-with cx, nLg, nCyp, nline_before_lst, ee, l order by l.index
+OPTIONAL MATCH(nCyp)-[e:HAS_LINE]->(:C_cyp_line_pos)
+set e.status = "to be updated"
+//with cx, nLg, nCyp, nline_before_lst, ee, lp order by lp.index
 with cx, nLg, nCyp, nline_before_lst, 
-COLLECT(ee) as HAS_LINEs_before
+COLLECT(e) as HAS_LINEs_before
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
+set nLg.list__HAS_LINE__before =apoc.convert.toString(apoc.coll.sort([x in HAS_LINEs_before | id(x) ]))
 set nLg.comments=nLg.comments + ["HAS_LINE flagged for update = cnt = " +tostring(size(HAS_LINEs_before))]
 
-//---- flag existing C_cyp_line nodes and HAS_LINE edges for update-------
-//with *
-//OPTIONAL MATCH(nCyp)-[ee:HAS_LINE]->(l:C_cyp_line)
-//set ee.status = "to be updated"
-//with cx, nLg, nCyp, nline_before_lst, ee, l order by l.index
-//with cx, nLg, nCyp, nline_before_lst, 
-//COLLECT(ee) as HAS_LINEs_before
-//set nLg.steps=nLg.steps + [size(nLg.steps+1)]
-//set nLg.comments=nLg.comments + ["HAS_LINE flagged for update = cnt = " +tostring(size(HAS_LINEs_before))]
+//---- flag existing HAS_POS edges for update-------
+with *
+OPTIONAL MATCH(nCyp)-[:HAS_LINE]->(:C_cyp_line_pos)<-[e:HAS_POS]-(:C_cyp_line)
+set e.status = "to be updated"
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before,
+COLLECT(e) as HAS_POSs_before
+set nLg.steps=nLg.steps + [size(nLg.steps+1)]
+set nLg.list__HAS_POS__before =apoc.convert.toString(apoc.coll.sort([x in HAS_POSs_before | id(x) ]))
+set nLg.comments=nLg.comments + ["HAS_POS flagged for update = cnt = " +tostring(size(HAS_POSs_before))]
 
 //---- flag existing NEXT_LINE edges for update-------
 with *
 CALL apoc.do.when(size(nline_before_lst)>0,replace(replace('
 UNWIND $nList as this
-OPTIONAL MATCH (n)-[e:<<edgetype>>]->(other:<<other_type>>)
+OPTIONAL MATCH (this)-[e:<<edgetype>>]->(:<<other_type>>)
 Set e.status= "to be updated"
 return COLLECT(e) as eList
-','<<edgetype>>','NEXT_LINE'),'<<other_type>>','C_cyp_line'),
+','<<edgetype>>','NEXT_LINE'),'<<other_type>>','C_cyp_line_pos'),
 'with [] as eList return eList', 
 {nList:nline_before_lst} ) YIELD value
 with *, value.eList as NEXT_LINEs_before
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
+set nLg.list__NEXT_LINE__before =apoc.convert.toString(apoc.coll.sort([x in NEXT_LINEs_before | id(x) ]))
 set nLg.comments=nLg.comments + ["NEXT_LINE flagged for update = cnt = " + toString(size(NEXT_LINEs_before))]
 
 //---- MERGE C_cyp_line_pos-------
@@ -130,10 +120,11 @@ with *, cx.cyp_lines[x] as lineStr
 MERGE(nLp:C_cyp_line_pos {identifier: tostring(x)+"/"+lineStr})
 on create set nLp.name = nLp.identifier, nLp.line=lineStr,  nLp.type = "C_cyp_line_pos", nLp.index = x, nLp.status = "new", nLp.createdAt=cx.dt
 on match set nLp.status = "actual" 
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp order by nLp.index 
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before,
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp order by nLp.index 
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before,
 COLLECT(nLp) as nLp_after_list
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
+set nLg.list__C_cyp_line_pos__after =apoc.convert.toString(apoc.coll.sort([x in nLp_after_list | id(x) ]))
 set nLg.comments=nLg.comments + ["LINES merged = " +tostring(size(nLp_after_list))]
 
 //---- MERGE C_cyp_line-------
@@ -143,10 +134,11 @@ with *, cx.cyp_lines[x] as lineStr
 MERGE(line:C_cyp_line {identifier: lineStr})
 on create set line.name = line.identifier, line.line=lineStr,  line.type = "C_cyp_line", line.index = x, line.status = "new", line.createdAt=cx.dt
 on match set line.status = "actual" 
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, line order by line.index 
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list,
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, line order by line.index 
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list,
 COLLECT(line) as lines_after
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
+set nLg.list__C_cyp_line__after =apoc.convert.toString(apoc.coll.sort([x in lines_after | id(x) ]))
 set nLg.comments=nLg.comments + ["C_cyp_line merged = " +tostring(size(lines_after))]
 
 //---- MERGE HAS_LINE-------
@@ -156,9 +148,10 @@ with *, nLp_after_list[x] as line
 MERGE(nCyp)-[e:HAS_LINE]->(line)
 on create set e.index = x, e.status = "new", e.createdAt = cx.dt
 on match set e.index = x, e.status = "actual"
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, lines_after,
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, lines_after,
 COLLECT(e) as HAS_LINEs_after
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
+set nLg.list__HAS_LINE__after =apoc.convert.toString(apoc.coll.sort([x in HAS_LINEs_after | id(x) ]))
 set nLg.comments=nLg.comments + ["HAS_LINE merged = " +tostring(size(HAS_LINEs_after))]
 
 //---- MERGE NEXT_LINE-------
@@ -169,11 +162,12 @@ with *, nLp_after_list[x+1] as next
 MERGE(this)-[e:NEXT_LINE]->(next)
 on create set e.status = "new", e.createdAt = cx.dt, e.index=this.index
 on match set e.status = "actual"
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, lines_after, 
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, lines_after, 
 COLLECT(e) as NEXT_LINEs_after
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
+set nLg.list__NEXT_LINE__after =apoc.convert.toString(apoc.coll.sort([x in NEXT_LINEs_after | id(x) ]))
 set nLg.comments=nLg.comments + ["NEXT_LINE merged = " +tostring(size(NEXT_LINEs_after))]
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
 
 //---- MERGE HAS_POS-------
 with *
@@ -183,61 +177,75 @@ MATCH(line:C_cyp_line {identifier:nLp.line})
 MERGE(line)-[e:HAS_POS]->(nLp)
 on create set e.index = x, e.status = "new", e.createdAt = cx.dt
 on match set e.index = nLp.index, e.status = "actual"
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after,
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after,
 COLLECT(e) as HAS_POSs_after
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
+set nLg.list__HAS_POS__after =apoc.convert.toString(apoc.coll.sort([x in HAS_POSs_after | id(x) ]))
 set nLg.comments=nLg.comments + ["HAS_POS merged = " +tostring(size(HAS_POSs_after))]
 
 //---- check not updated C_cyp_line_pos  nodes-------
-with *, filter( x in nline_before_lst where x.status= "to be updated" ) as before_outdated
-CALL apoc.do.when(size(before_outdated)>0,' 
-with $before_outdated as before_outdated
-UNWIND before_outdated as item
+with *, filter( x in nline_before_lst where x.status= "to be updated" ) as list
+CALL apoc.do.when(size(list)>0,' 
+with $nLg as nLg, $list as list
+UNWIND list as item
 Set item.status = "outdated"
-with COLLECT(item) as items
-return count(items) as cnt
-','return 0', {before_outdated: before_outdated}) YIELD value
+with nLg, 
+COLLECT(item) as items
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
-set nLg.comments=nLg.comments + ["C_cyp_line_pos outdated = "+ apoc.convert.toString([x in before_outdated| x.index])]
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
+set nLg.list__C_cyp_line_pos__outdated =coalesce(apoc.convert.toString(apoc.coll.sort([x in items | id(x) ])),"[]")
+set nLg.comments=nLg.comments + ["C_cyp_line_pos outdated = "+ apoc.convert.toString([x in items| x.index])]
+return items as items
+','return []', {nLg: nLg, list: list}) YIELD value
 
-//---- check not updated C_cyp_line_pos  nodes-------
-//with *, filter( x in nline_before_lst where x.status= "to be updated" ) as before_outdated
-//CALL apoc.do.when(size(before_outdated)>0,' 
-//with $before_outdated as before_outdated
-//UNWIND before_outdated as item
-//Set item.status = "outdated"
-//with COLLECT(item) as items
-//return count(items) as cnt
-//','return 0', {before_outdated: before_outdated}) YIELD value
-//set nLg.steps=nLg.steps + [size(nLg.steps+1)]
-//set nLg.comments=nLg.comments + ["LINES outdated = "+ apoc.convert.toString([x in before_outdated| x.index])]
-//with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, lines_after, HAS_LINEs_after, NEXT_LINEs_after
+
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
 
 //---- check not updated HAS_LINEs_before edges-------
-with *, filter( x in HAS_LINEs_before where x.status= "to be updated" ) as before_outdated
-CALL apoc.do.when(size(before_outdated)>0,' 
-with $before_outdated as before_outdated
-UNWIND before_outdated as item
+with *, filter( x in HAS_LINEs_before where x.status= "to be updated" ) as list
+CALL apoc.do.when(size(list)>0,' 
+with $nLg as nLg, $list as list
+UNWIND list as item
 Set item.status = "outdated"
-with COLLECT(item) as items
-return count(items) as cnt
-','return 0', {before_outdated: before_outdated}) YIELD value
+with nLg, 
+COLLECT(item) as items
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
-set nLg.comments=nLg.comments + ["HAS_LINES outdated = "+ apoc.convert.toString([x in before_outdated| x.index])]
-with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
+set nLg.list__HAS_LINE__outdated =coalesce(apoc.convert.toString(apoc.coll.sort([x in items | id(x) ])),"[]")
+set nLg.comments=nLg.comments + ["HAS_LINES outdated = "+ apoc.convert.toString([x in items| x.index])]
+return items as items
+','return []', {nLg: nLg, list: list}) YIELD value
+
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
 
 //---- check not updated NEXT_LINEs_before edges-------
-with *, filter( x in NEXT_LINEs_before where x.status= "to be updated" ) as before_outdated
-CALL apoc.do.when(size(before_outdated)>0,' 
-with $before_outdated as before_outdated
-UNWIND before_outdated as item
+with *, filter( x in NEXT_LINEs_before where x.status= "to be updated" ) as list
+CALL apoc.do.when(size(list)>0,' 
+with $nLg as nLg, $list as list
+UNWIND list as item
 Set item.status = "outdated"
-with COLLECT(item ) as items
-return count(items) as cnt
-','return 0', {before_outdated: before_outdated}) YIELD value
+with nLg, 
+COLLECT(item) as items
 set nLg.steps=nLg.steps + [size(nLg.steps+1)]
-set nLg.comments=nLg.comments + ["NEXT_LINE outdated = "+ apoc.convert.toString([x in before_outdated| x.index])]
+set nLg.list__NEXT_LINE__outdated =coalesce(apoc.convert.toString(apoc.coll.sort([x in items | id(x) ])),"[]")
+set nLg.comments=nLg.comments + ["NEXT_LINE outdated = "+ apoc.convert.toString([x in items| x.index])]
+return items as items
+','return []', {nLg: nLg, list: list}) YIELD value
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
+
+//---- check not updated HAS_POSs_before edges-------
+with *, filter( x in HAS_POSs_before where x.status= "to be updated" ) as list
+CALL apoc.do.when(size(list)>0,' 
+with $nLg as nLg, $list as list
+UNWIND list as item
+Set item.status = "outdated"
+with nLg, 
+COLLECT(item) as items
+set nLg.steps=nLg.steps + [size(nLg.steps+1)]
+set nLg.list__HAS_POS__outdated =coalesce(apoc.convert.toString(apoc.coll.sort([x in items | id(x) ])),"[]")
+set nLg.comments=nLg.comments + ["HAS_POS outdated = "+ apoc.convert.toString([x in items| x.index])]
+return items as items
+','return []', {nLg: nLg, list: list}) YIELD value
+
+with cx, nLg, nCyp, nline_before_lst, HAS_LINEs_before, HAS_POSs_before, NEXT_LINEs_before, nLp_after_list, HAS_LINEs_after, NEXT_LINEs_after, lines_after
 
 //with *
 //unwind nLp_after_list as line
