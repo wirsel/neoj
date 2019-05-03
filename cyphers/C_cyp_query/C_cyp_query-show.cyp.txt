@@ -1,4 +1,4 @@
-//show las C_cyp_query
+//C_cyp_query show
 match(cyp:C_cyp_query)
 OPTIONAL match(cyp)-[u:HAS_LINE]->(l:C_cyp_line)
 return *
