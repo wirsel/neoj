@@ -1,0 +1,197 @@
+//C_cyp_query merge with iterate
+//https://github.com/wirsel/neoj/blob/master/cyphers/C_cyp_query/C_cyp_query-merge.cyp.txt
+with {} as cxn
+with cxn, { dt: datetime() } as cx
+with cxn, apoc.map.merge( cx ,{identifier: "nodes.level.type > types.type.name"} ) as cx  
+with cxn, apoc.map.merge( cx ,{delete: true} ) as cx
+with cxn, cx, [
+'with $cx as cx',
+'with cx, cx.cf["nodes.level"+cx.level+".type"] as link',
+'with cx, CASE WHEN link starts with "£cf." THEN coalesce(cx.cf[replace(link,"£cf.","")],link) ELSE link END as buf',
+'with cx, CASE WHEN buf starts with "£cf." THEN coalesce(cx.cf[ replace(buf,"£cf.","")+".name"],buf) ELSE buf END as type',
+'with apoc.map.merge(cx, {type:type}) as buf1',
+'with *, buf1 as cx',
+'return cx'
+] as cyp_lines
+with cxn, apoc.map.merge( cx, {cyp_lines:cyp_lines }) as cx
+
+//---------------------------------------------
+//---- create C_log node ------------------
+//---------------------------------------------
+CREATE(nLg:C_log {identifier:apoc.convert.toString(cx.dt)})
+Set nLg.name= nLg.identifier
+set nLg.type= "C_log"
+set nLg.step_last=0
+set nLg.steps=[]
+set nLg.comments=[]
+set nLg.steps=nLg.steps + [size(nLg.steps+1)]
+set nLg.comments=nLg.comments + ["nLg created"]
+with cx, nLg, apoc.map.merge(cxn, {nLg: nLg }) as cxn
+
+
+with cxn, cx, nLg, 'CALL apoc.path.expand($nCyp,\'HAS_LINE|NEXT_LINE|HAS_POS\',\'+C_cyp_line_pos|+C_cyp_line\',0,2) yield path return path' as cypherIterate
+with cxn, nLg, apoc.map.merge( cx, {cypherIterate: cypherIterate }) as cx
+set nLg.cypherIterate=cx.cypherIterate
+
+with cxn, cx, nLg,'FOREACH (n IN relationships(path)| SET n.status = \'to be updated\' )' as cypherAction
+with cxn, nLg, apoc.map.merge( cx, {cypherAction: cypherAction }) as cx
+
+MATCH(nCyp: C_cyp_query {identifier:cx.identifier})
+with cx, nLg, apoc.map.merge( cxn, {nCyp: nCyp }) as cxn
+set nLg.comments=nLg.comments + ["C_cyp_query matched = id = " + id(cxn.nCyp)]
+
+//---------------------------------------------
+//----update status for HAS_LINE|NEXT_LINE|HAS_POS-----
+//---------------------------------------------
+with *
+CALL apoc.periodic.iterate(cx.cypherIterate,cx.cypherAction,
+{batchSize:10000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{nCyp: cxn.nCyp }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
+
+set nLg.comments=nLg.comments + ["edges updated = committedOperations = " + toString(committedOperations)]
+
+Set nLg.step_rel_update= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries})
+with cxn, cx, nLg
+
+//---------------------------------------------
+//----  C_cyp_line_pos merge---
+//---------------------------------------------
+with cxn, cx, nLg, 'UNWIND range(0, size($items)-1) as x return {index:x, id:$items[x]} as item_map' as iteration
+with cxn, cx, nLg, iteration, replace('
+with item_map as item_map
+with *, $nCyp as nCyp,toString(item_map.index)+"/"+item_map.id as id
+with *, {identifier:id } as identprops
+with *, {index:item_map.index, line:item_map.id, type:$type, name:id } as props
+MERGE(nLp:<<type>> {identifier:id})
+on create set nLp.batchtime=$dt, nLp.createdAt = datetime(), nLp +=props, nLp.status=$status_create
+on match set nLp.status=$status_match
+','<<type>>','C_cyp_line_pos') as action
+
+set nLg.comments=nLg.comments + ["C_cyp_line_pos merge action = " + action]
+with cxn, cx, nLg, iteration, action
+CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{status_match:'actual', status_create:'new', dt:nLg.dt, items:cx.cyp_lines, nCyp:cxn.nCyp, type:"C_cyp_line_pos"  }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
+
+Set nLg.step_merge_nLp= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages})
+
+//---------------------------------------------
+//----  HAS_LINE merge---
+//---------------------------------------------
+with cxn, cx, nLg, {type_out:'C_cyp_query', type_in:'C_cyp_line_pos', edge_type:'HAS_LINE'} as replaces
+with *, 'UNWIND range(0, size($items)-1) as x return {index:x, id:$items[x]} as item_map' as iteration
+with *, '
+with item_map as item_map
+with *, $nCyp as nCyp
+with *, toString(item_map.index)+"/"+item_map.id as id_in
+with *, nCyp.identifier as id_out
+MATCH(out:<<type_out>> {identifier:id_out})
+MATCH(in:<<type_in>> {identifier:id_in})
+MERGE(out)-[e:<<edge_type>>]->(in)
+on create set e.index=item_map.index, e.status=$status_new, e.createdAt=datetime(), e.batchCreatedAt=$dt
+on match set e.status=$status_actual
+' as str
+with *, reduce(s=str, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as action
+
+set nLg.comments=nLg.comments + ["HAS_LINE merge action = " + action]
+with cxn, cx, nLg, iteration, action
+CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{ status_new:"new",  status_actual:"actual", dt:nLg.dt, items:cx.cyp_lines, nCyp:cxn.nCyp}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
+
+Set nLg.step_merge_HAS_LINE= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages})
+
+//---------------------------------------------
+//---- NEXT_LINE merge---
+//---------------------------------------------
+with cxn, cx, nLg, 'UNWIND range(0, size($items)-2) as x return {index:x, this:$items[x], next:$items[x+1]} as item_map' as iteration
+with cxn, cx, nLg, iteration, replace('
+with item_map as item_map
+with *, $nCyp as nCyp,toString(item_map.index)+"/"+item_map.this as id_this
+with *,toString(item_map.index+1)+"/"+item_map.next as id_next
+MATCH(nLp_this:<<type>> {identifier:id_this})
+MATCH(nLp_next:<<type>> {identifier:id_next})
+MERGE(nLp_this)-[e:NEXT_LINE]->(nLp_next)
+on create set e.index=item_map.index, e.status=\'new\', e.createdAt=datetime(), e.batchCreatedAt=$dt
+on match set e.status=\'actual\'
+','<<type>>','C_cyp_line_pos') as action
+
+set nLg.comments=nLg.comments + ["NEXT_LINE merge action = " + action]
+with cxn, cx, nLg, iteration, action
+CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{dt:nLg.dt, items:cx.cyp_lines, nCyp:cxn.nCyp, type:"C_cyp_line_pos"  }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
+
+Set nLg.step_merge_NEXT_LINE= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages})
+
+//---------------------------------------------
+//----  C_cyp_line merge---
+//---------------------------------------------
+with cxn, cx, nLg, 'UNWIND range(0, size($items)-1) as x return {index:x, id:$items[x]} as item_map' as iteration
+with cxn, cx, nLg, iteration, replace('
+with item_map as item_map
+with *, $nCyp as nCyp, item_map.id as id
+with *, {identifier:id } as identprops
+with *, {line:id, type:$type, name:id } as props
+MERGE(n:<<type>> {identifier:id})
+on create set n.batchtime=$dt, n.createdAt = datetime(), n +=props, n.status=$status_create
+on match set n.status=$status_match
+','<<type>>','C_cyp_line') as action
+
+set nLg.comments=nLg.comments + ["C_cyp_line merge action = " + action]
+with cxn, cx, nLg, iteration, action
+CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false, retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{ status_match:'actual', status_create:'new', dt:nLg.dt, items:cx.cyp_lines, nCyp:cxn.nCyp, type:"C_cyp_line_pos"  }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
+
+Set nLg.step_merge_C_cyp_line= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages})
+
+//---------------------------------------------
+//----  HAS_POS merge---
+//---------------------------------------------
+with cxn, cx, nLg, {type_out:'C_cyp_line', type_in:'C_cyp_line_pos', edge_type:'HAS_POS'} as replaces
+with *, 'UNWIND range(0, size($items)-1) as x return {index:x, id:$items[x]} as item_map' as iteration
+with *, '
+with item_map as item_map
+with *, $nCyp as nCyp
+with *, toString(item_map.index)+"/"+item_map.id as id_in
+with *, item_map.id as id_out
+with *, toString(item_map.index)+"/"+item_map.id as id
+MATCH(out:<<type_out>> {identifier:id_out})
+MATCH(in:<<type_in>> {identifier:id_in})
+MERGE(out)-[e:<<edge_type>>]->(in)
+on create set e.status=$status_create, e.createdAt=datetime(), e.batchCreatedAt=$dt
+on match set e.status=$status_match
+' as str
+with *, reduce(s=str, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as action
+
+set nLg.comments=nLg.comments + ["HAS_POS merge action = " + action]
+with cxn, cx, nLg, iteration, action
+CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{ status_create: 'new', status_match: 'actual', dt:nLg.dt, items:cx.cyp_lines, nCyp:cxn.nCyp }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
+
+Set nLg.step_merge_HAS_POS= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages})
+
+//---------------------------------------------
+//----look for deleted edges of type HAS_LINE|NEXT_LINE|HAS_POS-----
+//---------------------------------------------
+with cxn, cx, nLg,'
+UNWIND relationships(path) AS n
+with *, CASE 
+    WHEN n.status = $status_new THEN n.status 
+    WHEN n.status = $status_actual THEN n.status
+    ELSE $status_history 
+    END as status  
+Set n.status=status
+' as action
+
+//with cxn, cx, nLg,'FOREACH (n IN relationships(path)| Set n.log="12" )' as actionx
+//with cxn, cx, nLg,'' as actionxx
+//set nLg.cypherIterate=cx.cypherIterate
+with *
+//CALL apoc.cypher.run(cx.cypherIterate,{nCyp: cxn.nCyp }) yield value
+//with *, value.path as path
+//FOREACH (n IN relationships(path)| Set n.log="123" )
+CALL apoc.periodic.iterate(cx.cypherIterate,action,{batchSize:1000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{ nCyp:cxn.nCyp, status_new:"new", status_actual: "actual", status_history: 'history' }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
+
+set nLg.comments=nLg.comments + ["edges set to history = committedOperations = " + toString(committedOperations)]
+
+Set nLg.step_edges_history_update= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages, batch:batch, operations:operations, wasTerminated:wasTerminated})
+//with cxn, cx, nLg,
+//COLLECT(path ) as pathes
+
+
+//---- show result graph ------
+with *
+CALL apoc.cypher.run(cx.cypherIterate,{nCyp: cxn.nCyp }) yield value
+return value
