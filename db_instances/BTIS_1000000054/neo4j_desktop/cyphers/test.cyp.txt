@@ -39,37 +39,48 @@
 	types: { 
 		desktop: {
 			name: "C_neo4jdesktop_inst",
-			space: "£cf.spaces.neo4j"       
+			space: "£cf.spaces.neo4j",
+			variable: "n4jDesk"
         },
     	project: {
           	name: "C_neo4jdesktop_prj",
-          	space: "£cf.spaces.neo4j"     
+          	space: "£cf.spaces.neo4j",   
+			variable: "n4jDeskPrj"
         },
     	dbms: {
           	name: "C_neo4j_db_inst",
-          	space: "£cf.spaces.neo4j"         
+          	space: "£cf.spaces.neo4j",
+			variable: "n4jdDbms"
         },
     	statistics: {
           	name: "C_neo4j_db_inst_stat",
-          	space: "£cf.spaces.neo4j"      
+          	space: "£cf.spaces.neo4j", 
+			variable: "n4jdDbmsStat"
         }         
     },  
 	nodes: {
       	level1:{ 
       		type: "£cf.types.desktop",
-            labels: ""
+            labels: "",
+			variable: "£cf.types.desktop.variable",
+			id: "{ identifier: input_map.device }",
+			props: "{ name: input_map.device, name_this: input_map.device }",
+			input: "{ device: \'BTIS_1000000054\' }"
       	},
         level2:{ 
             type: "£cf.types.project",
-            labels: ""
+            labels: "",
+			variable: "£cf.types.project.variable"
         },
         level3:{ 
             type: "£cf.types.dbms",
-            labels: ""
+            labels: "",
+			variable: "£cf.types.dbms.variable"
         }, 
         level4:{ 
             type: "£cf.types.statistics",
-            labels: ""
+            labels: "",
+			variable: "£cf.types.statistics.variable"
         }
     },
     edges:{
