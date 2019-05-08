@@ -208,8 +208,31 @@ CALL apoc.periodic.iterate(cx.cypherIterate,action,{batchSize:1000, parallel:fal
 set nLg.comments=nLg.comments + ["C_cyp_line_pos set to history = committedOperations = " + toString(committedOperations)]
 
 Set nLg.step_C_cyp_line_pos_history_update= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages, batch:batch, operations:operations, wasTerminated:wasTerminated})
-//with cxn, cx, nLg,
-//COLLECT(path ) as pathes
+
+//---------------------------------------------
+//----look for deleted C_cyp_line-----
+//---------------------------------------------
+with cxn, cx, nLg, { thisType:"C_cyp_line", thisSide:"-", edgeType:"HAS_POS", otherSide:"->", otherType: "C_cyp_line_pos" } as replaces
+with *, '
+UNWIND nodes(path) AS n 
+with n, path
+where n:<<thisType>> 
+OPTIONAL MATCH (n)<<thisSide>>[e:<<edgeType>>]<<otherSide>>(:<<otherType>>)
+with n, path, 
+COLLECT(coalesce(e.status,\'\')) as status_list
+with *, filter(x in status_list where x=$status_actual) as status_actual_list
+with *, CASE 
+    WHEN size(status_actual_list)>0 THEN $status_actual
+    ELSE  $status_history END as status
+Set n.status=status
+' as str 
+with *, reduce(s=str, x in keys(replaces) | replace(s,"<<"+x+">>", replaces[x])) as action
+
+CALL apoc.periodic.iterate(cx.cypherIterate,action,{batchSize:1000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{ nCyp:cxn.nCyp, status_actual: cx.status.actual, status_history: cx.status.history }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
+
+set nLg.comments=nLg.comments + ["C_cyp_line set to history = committedOperations = " + toString(committedOperations)]
+
+Set nLg.step_C_cyp_line_history_update= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages, batch:batch, operations:operations, wasTerminated:wasTerminated})
 
 
 //---- show result graph ------
