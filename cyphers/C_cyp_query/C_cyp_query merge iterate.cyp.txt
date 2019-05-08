@@ -4,6 +4,7 @@ with {} as cxn
 with cxn, { dt: datetime() } as cx
 with cxn, apoc.map.merge( cx ,{identifier: "nodes.level.type > types.type.name"} ) as cx  
 with cxn, apoc.map.merge( cx ,{delete: true} ) as cx
+with cxn, apoc.map.merge( cx ,{status: {update: "to be updated", new: "new", actual:"actual", history: "history"}} ) as cx
 with cxn, cx, [
 'with $cx as cx',
 'with cx, cx.cf["nodes.level"+cx.level+".type"] as link',
@@ -33,9 +34,7 @@ with cxn, cx, nLg, 'CALL apoc.path.expand($nCyp,\'HAS_LINE|NEXT_LINE|HAS_POS\',\
 with cxn, nLg, apoc.map.merge( cx, {cypherIterate: cypherIterate }) as cx
 set nLg.cypherIterate=cx.cypherIterate
 
-with cxn, cx, nLg,'FOREACH (n IN relationships(path)| SET n.status = \'to be updated\' )' as cypherAction
-with cxn, nLg, apoc.map.merge( cx, {cypherAction: cypherAction }) as cx
-
+with *
 MATCH(nCyp: C_cyp_query {identifier:cx.identifier})
 with cx, nLg, apoc.map.merge( cxn, {nCyp: nCyp }) as cxn
 set nLg.comments=nLg.comments + ["C_cyp_query matched = id = " + id(cxn.nCyp)]
@@ -44,8 +43,10 @@ set nLg.comments=nLg.comments + ["C_cyp_query matched = id = " + id(cxn.nCyp)]
 //----update status for HAS_LINE|NEXT_LINE|HAS_POS-----
 //---------------------------------------------
 with *
+with cxn, cx, nLg,'FOREACH (n IN relationships(path)| SET n.status = $status_update )' as cypherAction
+with cxn, nLg, apoc.map.merge( cx, {cypherAction: cypherAction }) as cx
 CALL apoc.periodic.iterate(cx.cypherIterate,cx.cypherAction,
-{batchSize:10000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{nCyp: cxn.nCyp }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
+{batchSize:10000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{ nCyp: cxn.nCyp, status_update:cx.status.update }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
 
 set nLg.comments=nLg.comments + ["edges updated = committedOperations = " + toString(committedOperations)]
 
@@ -175,13 +176,7 @@ with *, CASE
 Set n.status=status
 ' as action
 
-//with cxn, cx, nLg,'FOREACH (n IN relationships(path)| Set n.log="12" )' as actionx
-//with cxn, cx, nLg,'' as actionxx
-//set nLg.cypherIterate=cx.cypherIterate
 with *
-//CALL apoc.cypher.run(cx.cypherIterate,{nCyp: cxn.nCyp }) yield value
-//with *, value.path as path
-//FOREACH (n IN relationships(path)| Set n.log="123" )
 CALL apoc.periodic.iterate(cx.cypherIterate,action,{batchSize:1000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{ nCyp:cxn.nCyp, status_new:"new", status_actual: "actual", status_history: 'history' }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
 
 set nLg.comments=nLg.comments + ["edges set to history = committedOperations = " + toString(committedOperations)]
