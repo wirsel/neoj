@@ -271,20 +271,16 @@ set nLg.comments=nLg.comments + ["NODE set to history = committedOperations = " 
 Set nLg.step_7_NODES_history_update= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages, batch:batch, operations:operations, wasTerminated:wasTerminated})
 
 //---------------------------------------------
-//----EDGE process outdated edges-----
+//----NODE process outdated edges-----
 //---------------------------------------------
 with cx, nLg, {HISTORY:"\'_HISTORY\'"} as replaces
 with *, '
-with node as n, $cx as cx
-with apoc.node.relationship.types(n)
-
-MATCH(out)-[e]->(in)
-Where e.status =cx.status.update 
-set e.status =cx.status.deleted
-with *
-CALL apoc.create.relationship(out,type(e)+<<HISTORY>>,{createdAt:datetime()},in) yield rel
-delete e
-return out
+with node as n, $cx as cx  
+with *, n.type as node_type
+with *, cx.node_id_maps[node_type].must_have_edge as must_have_edge
+with *, apoc.node.relationship.exists(n,must_have_edge)  as test
+CALL apoc.do.when(test,\'\',\'with $cx as cx, $n as n set n.status=cx.status.history return n\',{cx:cx, n:n}) yield value
+return n
 ' as action 
 with cx, nLg, replaces, reduce(s=action, x in keys(replaces) | replace(s,"<<"+x+">>", replaces[x])) as action
 with *,' match(q:C_cyp_query) with q CALL apoc.path.subgraphNodes(q,{maxlevel:0,sequence:\'C_cyp_query,HAS_LINE>|HAS_LINE_HISTORY>,C_cyp_line_pos,<HAS_POS|<HAS_POS_HISTORY,C_cyp_line\'}) yield node return node as node' as iterator
