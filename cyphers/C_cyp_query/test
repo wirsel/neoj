@@ -22,6 +22,16 @@ with cx, nLg, apoc.map.merge(cxn, {nLg: nLg }) as cxn
 with cxn, nLg, cx, ['C_cyp_query','C_cyp_line_pos','C_cyp_line' ] as nodes
 with cxn, nLg, apoc.map.merge(cx, {nodes: nodes}) as cx
 
+with cxn, nLg, cx, { 
+	C_cyp_query:{
+    	id:'cx.identifier'},
+    C_cyp_line_pos:{
+    	out:'toString(item_map.index)+\'/\'+item_map.this'},
+    C_cyp_line:{
+		out:'item_map.this'} 
+} as node_id_maps
+with cxn, nLg, apoc.map.merge(cx, {node_id_maps: node_id_maps}) as cx
+
 //with cxn, nLg, cx, ["C_cyp_line_pos", "C_cyp_line"] as nodes_to_delete
 with cxn, nLg, cx, [] as nodes_to_delete
 with cxn, nLg, apoc.map.merge(cx, {nodes_to_delete:nodes_to_delete}) as cx
@@ -40,7 +50,7 @@ with cxn, nLg, apoc.map.merge(cx, {edges: edges}) as cx
 
 with cxn, nLg, cx, { 
 	HAS_LINE:{
-    	out:'cx.identifier',
+    	out: 'cx.identifier',
         in: 'toString(item_map.index)+\'/\'+item_map.this' },
     HAS_POS:{
     	out:'item_map.this',
@@ -48,8 +58,8 @@ with cxn, nLg, cx, {
     NEXT_LINE:{
 		out:'toString(item_map.index)+\'/\'+item_map.this', 		
     	in: 'toString(item_map.index+1)+\'/\'+item_map.next'} 
-} as id_maps
-with cxn, nLg, apoc.map.merge(cx, {id_maps: id_maps}) as cx
+} as edge_id_maps
+with cxn, nLg, apoc.map.merge(cx, {edge_id_maps: edge_id_maps}) as cx
 
 with cxn, nLg, cx, ["HAS_LINE", "NEXT_LINE"] as edges_to_delete
 //with cxn, cx, nLg, [] as edges_to_delete
@@ -137,6 +147,7 @@ with cx, cxn, nLg, COLLECT(value) as values
 //---------------------------------------------
 //----  C_cyp_query merge---
 //---------------------------------------------
+with cx.nodes
 with cxn, cx, nLg, {
 	type: 'C_cyp_query',
 	identprops:"{identifier:cx.identifier}", 
@@ -214,8 +225,8 @@ with cxn, cx, nLg
 //----  EDGE merge --
 //---------------------------------------------
 UNWIND keys(cx.edges) as edge_type
-with *, cx.edges[edge_type] as edge_map, cx.id_maps[edge_type] as id_map
-with *, {out_id_cyp: id_map.out, type_out:edge_map.out, edge_type:edge_map.type, type_in:edge_map.in, in_id_cyp: id_map.in} as replaces
+with *, cx.edges[edge_type] as edge_map, cx.edge_id_maps[edge_type] as edge_id_map
+with *, {out_id_cyp: edge_id_map.out, type_out:edge_map.out, edge_type:edge_map.type, type_in:edge_map.in, in_id_cyp: edge_id_map.in} as replaces
 with cxn, cx, nLg, edge_type, apoc.map.merge(replaces, {on_create_set: '{index:item_map.index, status:$status_create, createdAt:datetime(), batchCreatedAt:dt}'}) as replaces
 with cxn, cx, nLg, edge_type, apoc.map.merge(replaces, {on_match_set: '{status:$status_match}'}) as replaces
 with *, '
