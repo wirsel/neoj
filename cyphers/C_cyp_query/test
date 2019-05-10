@@ -147,18 +147,19 @@ with cx, cxn, nLg, COLLECT(value) as values
 //---------------------------------------------
 //----  C_cyp_query merge---
 //---------------------------------------------
-with cx.nodes
+with cx, cxn, nLg, "C_cyp_query" as node_type
+with cx, cxn, nLg, node_type, cx.node_id_maps[node_type] as node_id_map
 with cxn, cx, nLg, {
-	type: 'C_cyp_query',
-	identprops:"{identifier:cx.identifier}", 
-	props:'{name:cx.identifier, type:$type}',
-	on_create_set:'{name:cx.identifier, type:$type, batchtime:dt, createdAt:datetime(), status:$status_create}', 
+	var:"n",
+    type: node_type,
+	identprops:"{identifier:"+node_id_map.id+"}",     
+	on_create_set:'{name:n.identifier, type:$type, batchtime:dt, createdAt:datetime(), status:$status_create}', 
 	on_match_set:'{status:$status_match}'} as replaces 
 with *, '
 with item_map as item_map, $cx as cx, $dt as dt
-MERGE(n:<<type>> <<identprops>>)
-on create set n += <<on_create_set>>
-on match set n += <<on_match_set>>
+MERGE(<<var>>:<<type>> <<identprops>>)
+on create set <<var>> += <<on_create_set>>
+on match set <<var>> += <<on_match_set>>
 ' as str
 with *, reduce(s=str, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as action
 
