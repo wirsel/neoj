@@ -63,13 +63,19 @@ with cxn, nLg, apoc.map.merge(cx, {edges: edges}) as cx
 with cxn, nLg, cx, { 
 	HAS_LINE:{
     	out: 'cx.identifier',
-        in: 'toString(item_map.index)+\'/\'+item_map.this' },
+        in: 'toString(item_map.index)+\'/\'+item_map.this',
+        items:'cx.cyp_lines'
+    },
     HAS_POS:{
     	out:'item_map.this',
-        in: 'toString(item_map.index)+\'/\'+item_map.this'},
+        in: 'toString(item_map.index)+\'/\'+item_map.this',
+        items:'cx.cyp_lines'
+    },
     NEXT_LINE:{
 		out:'toString(item_map.index)+\'/\'+item_map.this', 		
-    	in: 'toString(item_map.index+1)+\'/\'+item_map.next'} 
+    	in: 'toString(item_map.index+1)+\'/\'+item_map.next',
+        items:'cx.cyp_lines'
+   }
 } as edge_id_maps
 with cxn, nLg, apoc.map.merge(cx, {edge_id_maps: edge_id_maps}) as cx
 
@@ -113,8 +119,7 @@ with cxn, nLg, cx, [
 'with cx, cx.cf["nodes.level"+cx.level+".type"] as link',
 'with cx, CASE WHEN link starts with "£cf." THEN coalesce(cx.cf[replace(link,"£cf.","")],link) ELSE link END as buf',
 'with cx, CASE WHEN buf starts with "£cf." THEN coalesce(cx.cf[ replace(buf,"£cf.","")+".name"],buf) ELSE buf END as type',
-'//with apoc.map.merge(cx, {type:type}) as buf1',
-'with *, buf1 as cx',
+'//with apoc.map.merge(cx, {type:type}) as cx',
 'return cx sdcsdc'
 ] as cyp_lines
 with cxn, nLg, apoc.map.merge( cx, {cyp_lines:cyp_lines }) as cx
@@ -194,79 +199,25 @@ with *, apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken
 CALL apoc.create.setProperty(nLg,'step_2_'+node_type+'_merge',res_map_str) yield node as node1
 CALL apoc.create.setProperty(nLg,'step_2_'+node_type+'_merge_iteration',iteration) yield node as node2
 CALL apoc.create.setProperty(nLg,'step_2_'+node_type+'_merge_action',action) yield node as node3
-with cx, cxn, nLg, action, COLLECT(node_type) as coll
+with cx, cxn, nLg, COLLECT(node_type) as coll
 
-
-//---------------------------------------------
-//----  C_cyp_line_pos merge---
-//---------------------------------------------
-with cxn, cx, nLg, {
-	this:"n",
-	type: 'TEST',//'C_cyp_line_pos', 
-    id: "toString(item_map.index)+\'/\'+item_map.this",
-	identprops:"{identifier:id}", 
-	on_create_set:'{index:item_map.index, line:item_map.this, type:$type, name:id, type:$type, batchtime:dt, createdAt:datetime(), status:$status_create}', 
-	on_match_set:'{status:$status_match}'} as replaces 
-
-with *, '
-with item_map as item_map, $cx as cx, $dt as dt
-with *, <<id>> as id
-with *, <<identprops>> as identprops
-MERGE(<<this>>:<<type>> <<identprops>>)
-on create set <<this>> += <<on_create_set>>
-on match set <<this>> += <<on_match_set>>
-' as str
-with *, reduce(s=str, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as action
-
-set nLg.comments=nLg.comments + ["C_cyp_line_pos merge action = " + action]
-with cxn, cx, nLg, action
-//CALL apoc.periodic.iterate(cx.iteration,action,{batchSize:10000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{cx:cx, status_match:cx.status.actual, status_create:cx.status.new, dt:nLg.dt, items:cx.cyp_lines, nCyp:cxn.nCyp, type:"C_cyp_line_pos"  }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
-
-//Set nLg.step_3_C_cyp_line_pos__merge= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages})
-
-//---------------------------------------------
-//----  C_cyp_line merge---
-//---------------------------------------------
-with cxn, cx, nLg, {
-	this:"n",
-	type: 'TEST2',//'C_cyp_line', 
-    id: "item_map.this",
-	identprops:"{identifier:id}", 
-	on_create_set:'{line:item_map.this, type:$type, name:id, type:$type, batchtime:dt, createdAt:datetime(), status:$status_create}', 
-	on_match_set:'{status:$status_match}'} as replaces 
-
-with *, '
-with item_map as item_map, $cx as cx, $dt as dt
-with *, <<id>> as id
-with *, <<identprops>> as identprops
-MERGE(<<this>>:<<type>> <<identprops>>)
-on create set <<this>> += <<on_create_set>>
-on match set <<this>> += <<on_match_set>>
-' as str
-with *, reduce(s=str, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as action
-
-set nLg.comments=nLg.comments + ["C_cyp_line merge action = " + action]
-with cxn, cx, nLg, action
-//CALL apoc.periodic.iterate(cx.iteration,action,{batchSize:10000, parallel:false, retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{cx:cx, status_match:cx.status.actual, status_create:cx.status.new, dt:nLg.dt, items:cx.cyp_lines, type:"C_cyp_line_pos"  }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
-
-//Set nLg.step_4_C_cyp_line_merge= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages})
-with *
-match(n:C_cyp_query {identifier:cx.identifier})
-
-with cxn, cx, nLg
 
 //---------------------------------------------
 //----  EDGE merge --
 //---------------------------------------------
 UNWIND keys(cx.edges) as edge_type
 with *, cx.edges[edge_type] as edge_map, cx.edge_id_maps[edge_type] as edge_id_map
-with *, {out_id_cyp: edge_id_map.out, type_out:edge_map.out, edge_type:edge_map.type, type_in:edge_map.in, in_id_cyp: edge_id_map.in} as replaces
-with cxn, cx, nLg, edge_type, apoc.map.merge(replaces, {on_create_set: '{index:item_map.index, status:$status_create, createdAt:datetime(), batchCreatedAt:dt}'}) as replaces
-with cxn, cx, nLg, edge_type, apoc.map.merge(replaces, {on_match_set: '{status:$status_match}'}) as replaces
+with *, {
+	out_id_cyp: edge_id_map.out, type_out:edge_map.out, 
+    edge_type:edge_map.type, 
+    type_in:edge_map.in, in_id_cyp: edge_id_map.in, 
+	on_create_set: '{index:item_map.index, status:$status_create, createdAt:datetime(), batchCreatedAt:dt}',
+	on_match_set: '{status:$status_match}',
+    items:edge_id_map.items
+} as replaces
 with *, '
 with item_map as item_map, $cx as cx, $dt as dt
 with *, <<in_id_cyp>> as id_in, <<out_id_cyp>> as id_out
-//MERGE(t:TEST {identifier:"<<edge_type>>/out="+coalesce(id_out,"null")+"/in="+coalesce(id_in,"null")})
 where not id_out is null and not id_in is null
 with *
 MATCH(out:<<type_out>> {identifier:id_out})
@@ -276,9 +227,10 @@ on create set e += <<on_create_set>>
 on match set e += <<on_match_set>>
 ' as str
 with *, reduce(s=str, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as action
+with *, reduce(s=cx.iteration, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as iteration
 set nLg.comments=nLg.comments + [edge_type+' merge action = ' + action]
 with *
-CALL apoc.periodic.iterate(cx.iteration,action,{batchSize:10000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{ status_create:cx.status.new,  status_match:cx.status.actual, dt:nLg.dt, items:cx.cyp_lines, cx:cx}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
+CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{ status_create:cx.status.new,  status_match:cx.status.actual, dt:nLg.dt, items:cx.cyp_lines, cx:cx}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
 with *, apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages}) as res_map_str
 
 CALL apoc.create.setProperty(nLg,'step_5_'+edge_type+'_merge',res_map_str) yield node
