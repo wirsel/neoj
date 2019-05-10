@@ -24,11 +24,20 @@ with cxn, nLg, apoc.map.merge(cx, {nodes: nodes}) as cx
 
 with cxn, nLg, cx, { 
 	C_cyp_query:{
-    	id:'cx.identifier'},
+    	id:'cx.identifier',
+        on_create_set:'{name:n.identifier, type:$type, batchtime:dt, createdAt:datetime(), status:$status_create}',
+        on_match_set:'{status:$status_match}'
+	},
     C_cyp_line_pos:{
-    	out:'toString(item_map.index)+\'/\'+item_map.this'},
+    	id:'toString(item_map.index)+\'/\'+item_map.this',
+        on_create_set:'index:item_map.index, line:item_map.this, type:$type, name:n.identifier, type:$type, batchtime:dt, createdAt:datetime(), status:$status_create}',
+        on_match_set:'{status:$status_match}'
+	},        
     C_cyp_line:{
-		out:'item_map.this'} 
+		id:'item_map.this',
+        on_create_set:'line:item_map.this, type:$type, name:n.identifier, type:$type, batchtime:dt, createdAt:datetime(), status:$status_create',
+        on_match_set:'{status:$status_match}'
+  	} 
 } as node_id_maps
 with cxn, nLg, apoc.map.merge(cx, {node_id_maps: node_id_maps}) as cx
 
