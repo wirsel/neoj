@@ -80,13 +80,12 @@ Set nLg.step_merge_nLp= apoc.convert.toString({batches:batches,total:total, time
 //----  HAS_LINE merge---
 //---------------------------------------------
 with cxn, cx, nLg, {out_id_cyp: 'cx.nCyp.identifier', type_out:'C_cyp_query', edge_type:'HAS_LINE', type_in:'C_cyp_line_pos', in_id_cyp: 'toString(item_map.index)+\'/\'+item_map.this'} as replaces
-with cxn, cx, nLg, apoc.map.merge(replaces, {on_create_set: '{index:item_map.index, status:$status_create, createdAt:datetime(), batchCreatedAt:$dt}'}) as replaces
+with cxn, cx, nLg, apoc.map.merge(replaces, {on_create_set: '{index:item_map.index, status:$status_create, createdAt:datetime(), batchCreatedAt:dt}'}) as replaces
 with cxn, cx, nLg, apoc.map.merge(replaces, {on_match_set: '{status:$status_match}'}) as replaces
 with *, '
-with item_map as item_map
-with *, $cx as cx
-with *, <<in_id_cyp>> as id_in
-with *, <<out_id_cyp>> as id_out
+with item_map as item_map, $cx as cx, $dt as dt
+with *, <<in_id_cyp>> as id_in, <<out_id_cyp>> as id_out
+where not id_out is null and not id_in is null
 MATCH(out:<<type_out>> {identifier:id_out})
 MATCH(in:<<type_in>> {identifier:id_in})
 MERGE(out)-[e:<<edge_type>>]->(in)
@@ -105,11 +104,12 @@ Set nLg.step_merge_HAS_LINE= apoc.convert.toString({batches:batches,total:total,
 //---- NEXT_LINE merge---
 //---------------------------------------------
 with cxn, cx, nLg, {out_id_cyp: 'toString(item_map.index)+\'/\'+item_map.this', type_out:'C_cyp_line_pos', edge_type:'NEXT_LINE', type_in:'C_cyp_line_pos', in_id_cyp: 'toString(item_map.index+1)+\'/\'+item_map.next'} as replaces
-with cxn, cx, nLg, apoc.map.merge(replaces, {on_create_set: '{index:item_map.index, status:$status_create, createdAt:datetime(), batchCreatedAt:$dt}'}) as replaces
+with cxn, cx, nLg, apoc.map.merge(replaces, {on_create_set: '{index:item_map.index, status:$status_create, createdAt:datetime(), batchCreatedAt:dt}'}) as replaces
 with cxn, cx, nLg, apoc.map.merge(replaces, {on_match_set: '{status:$status_match}'}) as replaces
 
 with *, '
-with item_map as item_map, $cx as cx, <<in_id_cyp>> as id_in, <<out_id_cyp>> as id_out
+with item_map as item_map, $cx as cx, $dt as dt
+with *, <<in_id_cyp>> as id_in, <<out_id_cyp>> as id_out
 where not id_out is null and not id_in is null
 MATCH(out:<<type_out>> {identifier:id_out})
 MATCH(in:<<type_in>> {identifier:id_in})
@@ -152,10 +152,12 @@ Set nLg.step_merge_C_cyp_line= apoc.convert.toString({batches:batches,total:tota
 //---- HAS_POS merge---
 //---------------------------------------------
 with cxn, cx, nLg, {out_id_cyp: 'item_map.this', type_out:'C_cyp_line', edge_type:'HAS_POS', type_in:'C_cyp_line_pos', in_id_cyp: 'toString(item_map.index)+\'/\'+item_map.this'} as replaces
-with cxn, cx, nLg, apoc.map.merge(replaces, {on_create_set: '{status:$status_create, createdAt:datetime(), batchCreatedAt:$dt}'}) as replaces
+with cxn, cx, nLg, apoc.map.merge(replaces, {on_create_set: '{status:$status_create, createdAt:datetime(), batchCreatedAt:dt}'}) as replaces
 with cxn, cx, nLg, apoc.map.merge(replaces, {on_match_set: '{status:$status_match}'}) as replaces
 with *, '
-with item_map as item_map, $cx as cx, <<in_id_cyp>> as id_in, <<out_id_cyp>> as id_out
+with item_map as item_map, $cx as cx, $dt as dt
+with *, <<in_id_cyp>> as id_in, <<out_id_cyp>> as id_out
+where not id_out is null and not id_in is null
 MATCH(out:<<type_out>> {identifier:id_out})
 MATCH(in:<<type_in>> {identifier:id_in})
 MERGE(out)-[e:<<edge_type>>]->(in)
