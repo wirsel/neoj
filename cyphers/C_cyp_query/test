@@ -24,6 +24,19 @@ with cxn, nLg, cx, {
     } as edges
 with cxn, nLg, apoc.map.merge(cx, {edges: edges}) as cx
 
+with cxn, nLg, cx, { 
+	HAS_LINE:{
+    	out:'cx.identifier',
+        in: 'toString(item_map.index)+\'/\'+item_map.this' },
+    HAS_POS:{
+    	out:'item_map.this',
+        in: 'toString(item_map.index)+\'/\'+item_map.this'},
+    NEXT_LINE:{
+		out:'toString(item_map.index)+\'/\'+item_map.this', 		
+    	in: 'toString(item_map.index+1)+\'/\'+item_map.next'} 
+} as id_maps
+with cxn, nLg, apoc.map.merge(cx, {id_maps: id_maps}) as cx
+
 with cxn, nLg, cx, ["HAS_LINE", "NEXT_LINE"] as edges_to_delete
 //with cxn, cx, nLg, [] as edges_to_delete
 with cxn, nLg, apoc.map.merge(cx, {edges_to_delete:edges_to_delete}) as cx
@@ -181,29 +194,19 @@ Set nLg.step_3 = "match ok"
 with cxn, cx, nLg
 
 //---------------------------------------------
-//----  HAS_LINE merge (original)---
+//----  EDGE merge --
 //---------------------------------------------
-with *, { 
-	HAS_LINE:{
-    	out:'cx.identifier',
-        in:'toString(item_map.index)+\'/\'+item_map.this' },
-    HAS_POS:{
-    	out: 'item_map.this',
-        in: 'toString(item_map.index)+\'/\'+item_map.this'},
-    NEXT_LINE:{
-		out:'toString(item_map.index)+\'/\'+item_map.this', 		
-    	in:'toString(item_map.index)+\'/\'+item_map.next'} 
-} as id_maps
-with *, cx.edges["HAS_LINE"] as edge_map
-with *, id_maps["HAS_LINE"] as id_map
-Set nLg.step_4_0 = apoc.convert.toString(edge_map)
-with cxn, cx, nLg, {out_id_cyp: id_map.out, type_out:edge_map.out, edge_type:edge_map.type, type_in:edge_map.in, in_id_cyp: id_map.in} as replaces
-with cxn, cx, nLg, apoc.map.merge(replaces, {on_create_set: '{index:item_map.index, status:$status_create, createdAt:datetime(), batchCreatedAt:dt}'}) as replaces
-with cxn, cx, nLg, apoc.map.merge(replaces, {on_match_set: '{status:$status_match}'}) as replaces
+UNWIND keys(cx.edges) as edge_type
+with *, cx.edges[edge_type] as edge_map, cx.id_maps[edge_type] as id_map
+with *, {out_id_cyp: id_map.out, type_out:edge_map.out, edge_type:edge_map.type, type_in:edge_map.in, in_id_cyp: id_map.in} as replaces
+with cxn, cx, nLg, edge_type, apoc.map.merge(replaces, {on_create_set: '{index:item_map.index, status:$status_create, createdAt:datetime(), batchCreatedAt:dt}'}) as replaces
+with cxn, cx, nLg, edge_type, apoc.map.merge(replaces, {on_match_set: '{status:$status_match}'}) as replaces
 with *, '
 with item_map as item_map, $cx as cx, $dt as dt
 with *, <<in_id_cyp>> as id_in, <<out_id_cyp>> as id_out
+//MERGE(t:TEST {identifier:"<<edge_type>>/out="+coalesce(id_out,"null")+"/in="+coalesce(id_in,"null")})
 where not id_out is null and not id_in is null
+with *
 MATCH(out:<<type_out>> {identifier:id_out})
 MATCH(in:<<type_in>> {identifier:id_in})
 MERGE(out)-[e:<<edge_type>>]->(in)
@@ -211,11 +214,12 @@ on create set e += <<on_create_set>>
 on match set e += <<on_match_set>>
 ' as str
 with *, reduce(s=str, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as action
-
-set nLg.comments=nLg.comments + ["HAS_LINE merge action = " + action]
-with cxn, cx, nLg, action
+set nLg.comments=nLg.comments + [edge_type+' merge action = ' + action]
+with *
 CALL apoc.periodic.iterate(cx.iteration,action,{batchSize:10000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{ status_create:cx.status.new,  status_match:cx.status.actual, dt:nLg.dt, items:cx.cyp_lines, cx:cx}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
+with *, apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages}) as res_map_str
 
-Set nLg.step_4_TEST__merge= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages})
+CALL apoc.create.setProperty(nLg,'step_4_'+edge_type+'_merge',res_map_str) yield node
+with cx, COLLECT(edge_type) as coll
 
 return cx
