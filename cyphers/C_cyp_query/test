@@ -159,12 +159,13 @@ with cx, cxn, nLg, COLLECT(value) as values
 with cx, cxn, nLg, "C_cyp_query" as node_type
 with cx, cxn, nLg, node_type, cx.node_id_maps[node_type] as node_id_map
 with cxn, cx, nLg, {
-	this:"n",
+	this: "n",
     type: node_type,
-    id:node_id_map.id,
-	identprops:"{identifier:id}",     
-	on_create_set:'{name:n.identifier, type:$type, batchtime:dt, createdAt:datetime(), status:$status_create}', 
-	on_match_set:'{status:$status_match}'} as replaces 
+    id: node_id_map.id,
+	identprops: "{identifier:id}",     
+	on_create_set: node_id_map.on_create_set,
+	on_match_set: node_id_map.on_match_set
+} as replaces 
 with *, '
 with item_map as item_map, $cx as cx, $dt as dt
 with *, <<id>> as id
