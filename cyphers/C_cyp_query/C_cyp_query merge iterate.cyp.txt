@@ -58,7 +58,8 @@ with cxn, cx, nLg
 //---------------------------------------------
 //----  C_cyp_line_pos merge---
 //---------------------------------------------
-with cxn, cx, nLg, replace('
+with cxn, cx, nLg, {type: 'C_cyp_line_pos'} as replaces
+with *, '
 with item_map as item_map
 with *, $nCyp as nCyp,toString(item_map.index)+"/"+item_map.this as id
 with *, {identifier:id } as identprops
@@ -66,7 +67,8 @@ with *, {index:item_map.index, line:item_map.this, type:$type, name:id } as prop
 MERGE(nLp:<<type>> {identifier:id})
 on create set nLp.batchtime=$dt, nLp.createdAt = datetime(), nLp +=props, nLp.status=$status_create
 on match set nLp.status=$status_match
-','<<type>>','C_cyp_line_pos') as action
+' as str
+with *, reduce(s=str, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as action
 
 set nLg.comments=nLg.comments + ["C_cyp_line_pos merge action = " + action]
 with cxn, cx, nLg, action
@@ -122,7 +124,8 @@ Set nLg.step_merge_NEXT_LINE= apoc.convert.toString({batches:batches,total:total
 //---------------------------------------------
 //----  C_cyp_line merge---
 //---------------------------------------------
-with cxn, cx, nLg, replace('
+with cxn, cx, nLg, {type: 'C_cyp_line'} as replaces
+with *, '
 with item_map as item_map
 with *, $nCyp as nCyp, item_map.this as id
 with *, {identifier:id } as identprops
@@ -130,7 +133,8 @@ with *, {line:id, type:$type, name:id } as props
 MERGE(n:<<type>> {identifier:id})
 on create set n.batchtime=$dt, n.createdAt = datetime(), n +=props, n.status=$status_create
 on match set n.status=$status_match
-','<<type>>','C_cyp_line') as action
+' as str
+with *, reduce(s=str, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as action
 
 set nLg.comments=nLg.comments + ["C_cyp_line merge action = " + action]
 with cxn, cx, nLg, action
