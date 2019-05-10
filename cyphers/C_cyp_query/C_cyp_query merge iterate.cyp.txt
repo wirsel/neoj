@@ -56,12 +56,12 @@ with cxn, cx, nLg
 //---------------------------------------------
 //----  C_cyp_line_pos merge---
 //---------------------------------------------
-with cxn, cx, nLg, 'UNWIND range(0, size($items)-1) as x return {index:x, id:$items[x]} as item_map' as iteration
+with cxn, cx, nLg, 'UNWIND range(0, size($items)-1) as x return {index:x, this:$items[x]} as item_map' as iteration
 with cxn, cx, nLg, iteration, replace('
 with item_map as item_map
-with *, $nCyp as nCyp,toString(item_map.index)+"/"+item_map.id as id
+with *, $nCyp as nCyp,toString(item_map.index)+"/"+item_map.this as id
 with *, {identifier:id } as identprops
-with *, {index:item_map.index, line:item_map.id, type:$type, name:id } as props
+with *, {index:item_map.index, line:item_map.this, type:$type, name:id } as props
 MERGE(nLp:<<type>> {identifier:id})
 on create set nLp.batchtime=$dt, nLp.createdAt = datetime(), nLp +=props, nLp.status=$status_create
 on match set nLp.status=$status_match
@@ -76,8 +76,8 @@ Set nLg.step_merge_nLp= apoc.convert.toString({batches:batches,total:total, time
 //---------------------------------------------
 //----  HAS_LINE merge---
 //---------------------------------------------
-with cxn, cx, nLg, {out_id_cyp: 'cx.nCyp.identifier', type_out:'C_cyp_query', edge_type:'HAS_LINE', type_in:'C_cyp_line_pos', in_id_cyp: 'toString(item_map.index)+\'/\'+item_map.id'} as replaces
-with *, 'UNWIND range(0, size($items)-1) as x return {index:x, id:$items[x]} as item_map' as iteration
+with cxn, cx, nLg, {out_id_cyp: 'cx.nCyp.identifier', type_out:'C_cyp_query', edge_type:'HAS_LINE', type_in:'C_cyp_line_pos', in_id_cyp: 'toString(item_map.index)+\'/\'+item_map.this'} as replaces
+with *, 'UNWIND range(0, size($items)-1) as x return {index:x, this:$items[x]} as item_map' as iteration
 with *, '
 with item_map as item_map
 with *, $cx as cx
@@ -122,10 +122,10 @@ Set nLg.step_merge_NEXT_LINE= apoc.convert.toString({batches:batches,total:total
 //---------------------------------------------
 //----  C_cyp_line merge---
 //---------------------------------------------
-with cxn, cx, nLg, 'UNWIND range(0, size($items)-1) as x return {index:x, id:$items[x]} as item_map' as iteration
+with cxn, cx, nLg, 'UNWIND range(0, size($items)-1) as x return {index:x, this:$items[x]} as item_map' as iteration
 with cxn, cx, nLg, iteration, replace('
 with item_map as item_map
-with *, $nCyp as nCyp, item_map.id as id
+with *, $nCyp as nCyp, item_map.this as id
 with *, {identifier:id } as identprops
 with *, {line:id, type:$type, name:id } as props
 MERGE(n:<<type>> {identifier:id})
@@ -143,8 +143,8 @@ Set nLg.step_merge_C_cyp_line= apoc.convert.toString({batches:batches,total:tota
 //---------------------------------------------
 //---- HAS_POS merge---
 //---------------------------------------------
-with cxn, cx, nLg, {out_id_cyp: 'item_map.id', type_out:'C_cyp_line', edge_type:'HAS_POS', type_in:'C_cyp_line_pos', in_id_cyp: 'toString(item_map.index)+\'/\'+item_map.id'} as replaces
-with *, 'UNWIND range(0, size($items)-1) as x return {index:x, id:$items[x]} as item_map' as iteration
+with cxn, cx, nLg, {out_id_cyp: 'item_map.this', type_out:'C_cyp_line', edge_type:'HAS_POS', type_in:'C_cyp_line_pos', in_id_cyp: 'toString(item_map.index)+\'/\'+item_map.this'} as replaces
+with *, 'UNWIND range(0, size($items)-1) as x return {index:x, this:$items[x]} as item_map' as iteration
 with *, '
 with item_map as item_map, $cx as cx, <<in_id_cyp>> as id_in, <<out_id_cyp>> as id_out
 MATCH(out:<<type_out>> {identifier:id_out})
