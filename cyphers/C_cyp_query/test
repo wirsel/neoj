@@ -17,6 +17,20 @@ set nLg.comments=nLg.comments + ["nLg created"]
 with cx, nLg, apoc.map.merge(cxn, {nLg: nLg }) as cxn
 
 //---------------------------------------------
+//---- The input to be processed ------------------
+//---------------------------------------------
+with cxn, nLg, cx, [
+'with $cx as cx',
+'with cx, cx.cf["nodes.level"+cx.level+".type"] as link',
+'with cx, CASE WHEN link starts with "£cf." THEN coalesce(cx.cf[replace(link,"£cf.","")],link) ELSE link END as buf',
+'with cx, CASE WHEN buf starts with "£cf." THEN coalesce(cx.cf[ replace(buf,"£cf.","")+".name"],buf) ELSE buf END as type',
+'//with apoc.map.merge(cx, {type:type}) as cx',
+'return cx sdcsdc'
+] as cyp_lines
+with cxn, nLg, apoc.map.merge( cx, {cyp_lines:cyp_lines }) as cx
+with cxn, nLg, apoc.map.merge( cx, {root_id_list:["nodes.level.type > types.type.name"]}) as cx
+
+//---------------------------------------------
 //---- NODE master data ------------------
 //---------------------------------------------
 with cxn, nLg, cx, ['C_cyp_query','C_cyp_line_pos','C_cyp_line' ] as nodes
@@ -79,8 +93,8 @@ with cxn, nLg, cx, {
 } as edge_id_maps
 with cxn, nLg, apoc.map.merge(cx, {edge_id_maps: edge_id_maps}) as cx
 
-with cxn, nLg, cx, ["HAS_LINE", "NEXT_LINE"] as edges_to_delete
-//with cxn, cx, nLg, [] as edges_to_delete
+//with cxn, nLg, cx, ["HAS_LINE", "NEXT_LINE"] as edges_to_delete
+with cxn, cx, nLg, [] as edges_to_delete
 with cxn, nLg, apoc.map.merge(cx, {edges_to_delete:edges_to_delete}) as cx
 
 
@@ -111,19 +125,7 @@ UNWIND range(0, size(items)-1) as x return {index:x, prev:coalesce(items[x-1],nu
 ' as iteration
 with cxn, nLg, apoc.map.merge( cx, {iteration:iteration }) as cx
 
-//---------------------------------------------
-//---- The input to be processed ------------------
-//---------------------------------------------
-with cxn, nLg, cx, [
-'with $cx as cx',
-'with cx, cx.cf["nodes.level"+cx.level+".type"] as link',
-'with cx, CASE WHEN link starts with "£cf." THEN coalesce(cx.cf[replace(link,"£cf.","")],link) ELSE link END as buf',
-'with cx, CASE WHEN buf starts with "£cf." THEN coalesce(cx.cf[ replace(buf,"£cf.","")+".name"],buf) ELSE buf END as type',
-'//with apoc.map.merge(cx, {type:type}) as cx',
-'return cx sdcsdc'
-] as cyp_lines
-with cxn, nLg, apoc.map.merge( cx, {cyp_lines:cyp_lines }) as cx
-with cxn, nLg, apoc.map.merge( cx, {root_id_list:["nodes.level.type > types.type.name"]}) as cx
+
 
 
 
@@ -234,6 +236,32 @@ CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,ret
 with *, apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages}) as res_map_str
 
 CALL apoc.create.setProperty(nLg,'step_5_'+edge_type+'_merge',res_map_str) yield node
-with cx, COLLECT(edge_type) as coll
+with cx, nLg, COLLECT(edge_type) as coll
+
+//---------------------------------------------
+//----EDGES: look for deleted edges ----
+//---------------------------------------------
+with cx, nLg,'
+UNWIND relationships(path) AS n
+with *, CASE 
+    WHEN n.status = $status_new THEN n.status 
+    WHEN n.status = $status_actual THEN n.status
+    ELSE $status_history 
+    END as status  
+Set n.status=status
+' as action
+
+with *, {root_type:"C_cyp_query", root_id_map:"{identifier:cx.identifier}"} as replaces
+with *, reduce(s=cx.cypherIterate, x in keys(replaces) | replace(s,"<<"+x+">>",replaces[x])) as iteration
+
+CALL apoc.periodic.iterate(iteration,action,{batchSize:1000, parallel:false,retries:5, iterateList:false, concurrency:0, failedParams:-1, params:{ cx: cx, status_new:cx.status.new, status_actual: cx.status.actual, status_history: cx.status.history }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
+
+set nLg.comments=nLg.comments + ["edges set to history = committedOperations = " + toString(committedOperations)]
+
+Set nLg.step_6_edges_history_update= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages, batch:batch, operations:operations, wasTerminated:wasTerminated})
+//with cxn, cx, nLg,
+//COLLECT(path ) as pathes
+
+
 
 return cx
