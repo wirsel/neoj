@@ -31,6 +31,19 @@ with cxn, nLg, apoc.map.merge( cx, {cyp_lines:cyp_lines }) as cx
 with cxn, nLg, apoc.map.merge( cx, {root_id_list:["nodes.level.type > types.type.name"]}) as cx
 
 //---------------------------------------------
+//---- controll processing  ------------------
+//---------------------------------------------
+with *, {
+	EDGES_update:{enable:true, index:1, i:'1', t:"EDGES_update"},
+ 	EDGES_delete:{enable:false, index:2, i:'2', t:"EDGES_delete"},      
+ 	NODES_merge:{enable:true, index:3, i:'3', t:"NODES_merge"},   
+ 	EDGES_merge:{enable:true, index:4, i:'4', t:"EDGES_merge"},     
+ 	EDGES_history:{enable:false, index:5, i:'5', t:"EDGES_history"},     
+ 	NODES_history:{enable:false, index:6, i:'6', t:"NODES_history"}    
+} as steps
+with cxn, nLg, apoc.map.merge( cx, {steps:steps}) as cx
+
+//---------------------------------------------
 //---- NODE master data ------------------
 //---------------------------------------------
 with cxn, nLg, cx, ['C_cyp_query','C_cyp_line_pos','C_cyp_line' ] as nodes
@@ -141,7 +154,11 @@ with cxn, nLg, apoc.map.merge( cx, {iteration:iteration }) as cx
 //----update status for HAS_LINE|NEXT_LINE|HAS_POS-----
 //---------------------------------------------
 
-with cxn, cx, nLg,'FOREACH (n IN relationships(path)| SET n.status = $status_update )' as cypherAction
+with cxn, cx, nLg,
+
+
+
+'FOREACH (n IN relationships(path)| SET n.status = $status_update )' as cypherAction
 with cxn, nLg, apoc.map.merge( cx, {cypherAction: cypherAction }) as cx
 
 with *, {root_type:"C_cyp_query", root_id_map:"{identifier:cx.identifier}"} as replaces
@@ -213,7 +230,7 @@ with cx, cxn, nLg, COLLECT(node_type) as coll
 
 
 //---------------------------------------------
-//----  EDGE merge --
+//----  EDGES merge --
 //---------------------------------------------
 UNWIND keys(cx.edges) as edge_type
 with *, cx.edges[edge_type] as edge_map, cx.edge_id_maps[edge_type] as edge_id_map
