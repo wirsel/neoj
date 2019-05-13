@@ -20,10 +20,10 @@ with *, [
 	{enable:true,  t:"EDGES_update"},
  	{enable:false, t:"EDGES_delete"},  
  	{enable:false,  t:"NODES_delete"},           
- 	{enable:true,  t:"NODES_merge"},   
- 	{enable:true,  t:"EDGES_merge"},     
- 	{enable:true,  t:"EDGES_history"},
- 	{enable:true,  t:"NODES_history"}    
+ 	{enable:false,  t:"NODES_merge"},   
+ 	{enable:false,  t:"EDGES_merge"},     
+ 	{enable:false,  t:"EDGES_history"},
+ 	{enable:false,  t:"NODES_history"}    
 ] as step_list
 
 with cx,  nLg, [x in range(0, size(step_list)-1) | apoc.map.merge(step_list[x], {index:x, i:tostring(x)})]  as step_list
@@ -201,34 +201,6 @@ return value
 } as sia
 with nLg, sia, apoc.map.merge( cx, {sia:sia}) as cx
 
-//with *, {
-	//EDGES_update:{enable:false, index:1, i:'1', t:"EDGES_update"}, 
- 	//EDGES_delete:{enable:false, index:2, i:'2', t:"EDGES_delete"},  
- 	//NODES_delete:{enable:false, index:3, i:'3', t:"NODES_delete"},           
- 	//NODES_merge:{enable:false, index:4, i:'4', t:"NODES_merge"},   
- 	//EDGES_merge:{enable:true, index:5, i:'5', t:"EDGES_merge"},     
- 	//EDGES_history:{enable:false, index:6, i:'6', t:"EDGES_history"}
-//} as steps_orig
-//Set nLg.steps_orig=apoc.convert.toString(steps_orig)
-//with nLg, apoc.map.merge( cx, {steps:steps}) as cx
-
-//with *, {
-	//EDGES_update:{enable:true, index:1, i:'1', t:"EDGES_update", 
-    	//iterations:sia['EDGES_update'].i, action: sia['EDGES_update'].a },
- 	//EDGES_delete:{enable:false, index:2, i:'2', t:"EDGES_delete",  
-    	//iterations:sia['EDGES_delete'].i, action: sia['EDGES_delete'].a },
- 	//NODES_delete:{enable:false, index:3, i:'3', t:"NODES_delete",
-    	//iterations:sia['NODES_delete'].i, action: sia['NODES_delete'].a },
- 	//NODES_merge:{enable:false, index:4, i:'4', t:"NODES_merge",
-    	//iterations:sia['NODES_merge'].i, action: sia['NODES_merge'].a },
- 	//EDGES_merge:{enable:true, index:5, i:'5', t:"EDGES_merge",
-    	//iterations:sia['EDGES_merge'].i, action: sia['EDGES_merge'].a },
- 	//EDGES_history:{enable:false, index:6, i:'6', t:"EDGES_history",
-    	//iterations:sia['EDGES_history'].i, action: sia['EDGES_history'].a }
-//} as steps
-//Set nLg.steps=apoc.convert.toString(steps)
-//with nLg, sia, apoc.map.merge( cx, {steps:steps}) as cx
-
 Set nLg.steps_maps=apoc.convert.toString(cx.steps_maps)
 with *, [key in keys(cx.steps_maps) | apoc.map.merge(cx.steps_maps[key],{iterations:sia[key].i, action: sia[key].a})] as buffer
 //with *, reduce(map={}, item in buffer | apoc.map.merge(map,{key:buffer[key]})) as buffer2
@@ -240,25 +212,40 @@ Set nLg.steps_new=apoc.convert.toString(cx.steps)
 //----EDGES_update-----
 //---------------------------------------------
 //this is the first step in the batch. The effected subgraph is traversed and the <<status>> attribute for  every existing node and edge in the subgraph is set to <<cx.status.update>> 
-with *, cx.steps["EDGES_update"] as s
-with *,'FOREACH (n IN relationships(path)| SET n.status = $status_update )' as action
-with *,	CASE WHEN s.enable=true THEN action ELSE 'return 0' END as cypherAction
-with nLg, s, apoc.map.merge( cx, {cypherAction: cypherAction }) as cx
+with cx, nLg, {} as lcx
+with cx, nLg, apoc.map.merge(lcx, {s:cx.steps["EDGES_update"]}) as lcx //with *, cx.steps["EDGES_update"] as s
 
-with *, {root_type:"M_schema", root_id_map:"{identifier:cx.identifier}"} as replaces
-with *, reduce(s=cx.cypherIterate, x in keys(replaces) | replace(s,"<<"+x+">>",replaces[x])) as iteration
-with cx, nLg, s,iteration, replaces, CASE WHEN s.enable=true THEN cx.cypherAction ELSE 'return 0' END as action
+UNWIND ['_'] as item
 
-CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{cx:cx }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated
+with *, {root_type:cx.root.class, root_id_map:"{"+cx.root.pk.key+":\'"+cx.root.pk.value+"\'}"} as replaces
+with cx, nLg, item, apoc.map.merge(lcx, {replaces:replaces}) as lcx
+with *,'with path as path, $cx as cx FOREACH (n IN relationships(path)| SET n += {status:cx.status.update, visitCnt:0} )' as action
+with cx, nLg, lcx, item, CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END as action
+with cx, nLg, lcx, item, reduce(s=action, x in keys(lcx.replaces) | replace(s,"<<"+x+">>",lcx.replaces[x])) as action
+with cx, nLg, item, apoc.map.merge(lcx, {action:action}) as lcx
+//with nLg, s, apoc.map.merge( cx, {cypherAction: cypherAction }) as cx 
 
-set nLg.comments=nLg.comments + ["edges updated = committedOperations = " + toString(committedOperations)]
-with *, apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries}) as res_map_str
+with *, reduce(s=cx.cypherIterate, x in keys(lcx.replaces) | replace(s,"<<"+x+">>",lcx.replaces[x])) as iteration
+//with cx, nLg, s,iteration, replaces, CASE WHEN s.enable=true THEN cx.cypherAction ELSE 'return 0' END as action
+with cx, nLg, item, apoc.map.merge(lcx, {iteration:iteration}) as lcx
 
-CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+'_results',coalesce(res_map_str,'null')) yield node as node1
-CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+'_iteration',coalesce(iteration,'null')) yield node as node2
-CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+'_action',coalesce(action,'null')) yield node as node3
-CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+'_replaces', coalesce(apoc.convert.toString(replaces),'null')) yield node as node4
-with cx, nLg
+CALL apoc.periodic.iterate(lcx.iteration, lcx.action,{batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{cx:cx }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
+with *, {batches:batches, total:total,  timeTaken: timeTaken,  committedOperations: committedOperations,  failedOperations: failedOperations,  failedBatches: failedBatches,  retries: retries,  errorMessages: errorMessages,  batch: batch,  operations: operations,  wasTerminated:wasTerminated } as res_map
+with *, {results:apoc.convert.toString(coalesce(res_map,'null')), iteration: lcx.iteration, action: lcx.action, replaces:lcx.replaces} as log_map 
+with cx, nLg, item, apoc.map.merge(lcx, {prop:'step_'+lcx.s.i+'_'+lcx.s.t+'_'+item, log_map:log_map, res_map:res_map}) as lcx
+UNWIND keys(lcx.log_map) as log
+CALL apoc.create.setProperty(nLg, lcx.prop+'_'+log, apoc.convert.toString(coalesce(lcx.log_map[log],'null'))) yield node 
+with cx, nLg, lcx, item, COLLECT(log) as coll
+
+with *, filter(key in keys(lcx.replaces) where lcx.replaces[key] is null) as replaces_null_list
+CALL apoc.do.when(size(replaces_null_list)>0,'CALL apoc.create.setProperty($nLg, $prop+"_replaces_ERROR", "these Keys have NULL values = " + apoc.convert.toString( $list)) yield node return node','',{nLg:nLg, prop:lcx.prop, list:replaces_null_list}) yield value as valueNull
+    
+with *, filter(key in keys(lcx.replaces) where lcx.replaces[key] contains '>>' or  lcx.replaces[key] contains '<<') as replaces_missing_list
+CALL apoc.do.when(size(replaces_missing_list)>0,'CALL apoc.create.setProperty($nLg, $prop+"_replaces_ERROR", "these Keys have missing values = "+ apoc.convert.toString( $list)) yield node return node','', {nLg:nLg, prop:lcx.prop, list:replaces_missing_list}) yield value as valueMissing 
+
+CALL apoc.do.when(lcx.res_map.failedOperations>0,'CALL apoc.create.setProperty($nLg, $prop+"_results_WARNING", "failedOperations = "+$cnt) yield node return node','', {nLg:nLg, prop:lcx.prop, cnt: tostring( lcx.res_map.failedOperations)}) yield value as valueFailed  
+  
+with cx, nLg, COLLECT(item) as coll
 
 //---------------------------------------------
 //----  EDGE delete---
@@ -284,6 +271,7 @@ CALL apoc.do.when( size(cx.edges_to_delete)>0,action,"",{cx:cx, logger: nLg}) yi
 
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+'_action',coalesce(action,'null')) yield node as node3
 
+
 with cx, nLg, COLLECT(value) as values
 
 //---------------------------------------------
@@ -296,7 +284,7 @@ with cx, nLg, s, replaces, reduce(s=action, x in keys(replaces) | replace(s,'<<'
 UNWIND range(0,size(s.iterations)-1) AS i
 with *, reduce(s=s.iterations[i], x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as iteration
 with cx, nLg, s, i, iteration, replaces, CASE WHEN s.enable=true THEN action ELSE 'return 0' END as action
-CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:nLg.dt, cx:cx}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated with *, apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages}) as res_map_str CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(i)+'_results',coalesce(res_map_str,'null')) yield node as node1 
+CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:coalesce(nLg.name,'null'), cx:cx}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated with *, apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages}) as res_map_str CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(i)+'_results',coalesce(res_map_str,'null')) yield node as node1 
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(i)+'_iteration',coalesce(iteration,'null')) yield node as node2
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(i)+'_action',coalesce(action,'null')) yield node as node3
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(i)+'_replaces', coalesce( apoc.convert.toString( replaces), 'null')) yield node as node4
@@ -331,7 +319,7 @@ with *, reduce(s=str, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) 
 with *, reduce(s=cx.iteration, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as iteration
 with cx, nLg, s, iteration, replaces, node_type, CASE WHEN s.enable=true THEN action ELSE 'return 0' END as action
 
-CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ cx: cx, dt:nLg.dt }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated with *, apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages}) as res_map_str CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+node_type+'_results',coalesce(res_map_str,'null')) yield node as node1 
+CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ cx: cx, dt:coalesce(nLg.name,'null') }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated with *, apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages}) as res_map_str CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+node_type+'_results',coalesce(res_map_str,'null')) yield node as node1 
 
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+node_type+'_iteration',coalesce(iteration,'null')) yield node as node2
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+node_type+'_action',coalesce(action,'null')) yield node as node3
@@ -364,15 +352,18 @@ with cx, nLg, item, apoc.map.merge(lcx, {replaces:{
     items:lcx.edge_id_map.input_items
 }})  as lcx
 with *, '
-with item_map as item_map, $cx as cx, $dt as dt
-with *, <<in_id_cyp>> as id_in, <<out_id_cyp>> as id_out
-where not id_out is null and not id_in is null
-with *
-MATCH(out:<<type_out>> {identifier:id_out})
-MATCH(in:<<type_in>> {identifier:id_in})
-MERGE(out)-[e:<<edge_type>>]->(in)
-on create set e += <<on_create_set>>
-on match set e += <<on_match_set>>
+	with item_map as item_map, $cx as cx, $dt as dt, $nLg as nLg
+	with *, <<in_id_cyp>> as id_in, <<out_id_cyp>> as id_out
+	where not id_out is null and not id_in is null
+	with *
+	MATCH(out:<<type_out>> {identifier:id_out})
+	MATCH(in:<<type_in>> {identifier:id_in})
+	with *
+	OPTIONAL MATCH(out)-[oe:<<edge_type>>]->(in)
+	with *, CASE WHEN not oe is null and oe.batchCreatedAt=$nLg.name THEN {status:oe.status} ELSE <<on_match_set>> END as on_match_set
+	MERGE(out)-[e:<<edge_type>>]->(in)
+	on create set e += <<on_create_set>>
+	on match set e += <<on_match_set>>
 ' as str
 
 with *, CASE WHEN cx.steps["EDGES_merge"].enable=true THEN reduce(s=str, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) ELSE 'return 0' END as action
@@ -382,7 +373,7 @@ with cx, nLg, item, apoc.map.merge(lcx, {iteration:reduce(s=cx.iteration, x in k
 //CALL apoc.create.setProperty(nLg,'aaa4',"true") yield node as  node44
 with cx, nLg, item, apoc.map.merge(lcx, {prop:'step_'+lcx.s.i+'_'+lcx.s.t+'_'+item}) as lcx
 
-CALL apoc.periodic.iterate(lcx.iteration, lcx.action, {batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:nLg.dt, cx:cx}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated with *, {batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages} as res_map
+CALL apoc.periodic.iterate(lcx.iteration, lcx.action, {batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:coalesce(nLg.name,'null'), cx:cx, nLg:nLg}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated with *, {batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages} as res_map
 
 with *, {results:apoc.convert.toString(coalesce(res_map,'null')), iteration: lcx.iteration, action: lcx.action, replaces:lcx.replaces} as log_map 
 UNWIND keys(log_map) as log
