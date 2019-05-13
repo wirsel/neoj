@@ -20,11 +20,11 @@ with cx, nLg, apoc.map.merge(cxn, {nLg: nLg }) as cxn
 with *, [
 	{enable:true,  t:"EDGES_preparation", mandatory:true},
  	{enable:false, t:"EDGES_delete", mandatory:false},  
- 	{enable:true,  t:"NODES_delete", mandatory:false},          
+ 	{enable:false,  t:"NODES_delete", mandatory:false},          
  	{enable:true,  t:"NODES_merge", mandatory:false},  
  	{enable:true,  t:"EDGES_merge", mandatory:false, dependencies:["EDGES_preparation"]},    
- 	{enable:false,  t:"EDGES_history", mandatory:false},
- 	{enable:false,  t:"NODES_history", mandatory:false}
+ 	{enable:true,  t:"EDGES_history", mandatory:false},
+ 	{enable:true,  t:"NODES_history", mandatory:false}
 ] as step_list
 
 with cx,  nLg, [x in range(0, size(step_list)-1) | apoc.map.merge(step_list[x], {index:x, i:tostring(x)})]  as step_list
@@ -34,12 +34,11 @@ Set nLg.steps_maps=apoc.convert.toString(cx.steps_maps) with *
 //---------------------------------------------
 //---- The input to be processed ------------------
 //---------------------------------------------
-CALL apoc.schema.nodes() yield label
-with nLg, cx, COLLECT(label) as input_items
-with nLg, apoc.map.merge( cx, {labels:input_items }) as cx
+CALL apoc.schema.nodes() yield name, label, properties, status, type 
+with nLg, cx, { name:name,  label: label,  properties: properties,  status: status,  type:type} as item
+with nLg, cx, COLLECT(item) as input_maps
+with nLg, apoc.map.merge( cx, {input_maps:input_maps }) as cx
 with nLg, apoc.map.merge( cx, {root_id_list:["schema"]}) as cx
-
-
 
 //---------------------------------------------
 //---- NODE master data ------------------
@@ -70,10 +69,10 @@ with nLg, cx, {
         must_have_edge: 'HAS_LABEL'
 	},
     M_label:{
-    	id:'item_map.this',
+    	id:'item_map.this.label',
         on_create_set:'{type:type, name:n.identifier, batchtime:dt, createdAt:datetime(), status:cx.status.new}',
         on_match_set:'{status:cx.status.actual}',
-        input_items:'cx.labels',
+        input_items:'cx.input_maps',
         must_have_edge: 'HAS_LABEL'
 	}
 } as node_id_maps
@@ -110,7 +109,7 @@ with nLg, cx, {
 	HAS_LABEL:{
     	out_class: cx.edges["HAS_LABEL"].out,
         in_class: cx.edges["HAS_LABEL"].in,
-        input_items:'cx.labels',
+        input_items:'cx.input_maps',
     	out: cx.node_id_maps[cx.edges["HAS_LABEL"].out].id,
         in: cx.node_id_maps[cx.edges["HAS_LABEL"].in].id
     }
@@ -284,7 +283,9 @@ with cx, nLg, s, replaces, reduce(s=action, x in keys(replaces) | replace(s,'<<'
 UNWIND range(0,size(s.iterations)-1) AS i
 with *, reduce(s=s.iterations[i], x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as iteration
 with cx, nLg, s, i, iteration, replaces, CASE WHEN s.enable=true THEN action ELSE 'return 0' END as action
-CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:coalesce(nLg.name,'null'), cx:cx}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated with *, apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages}) as res_map_str CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(i)+'_results',coalesce(res_map_str,'null')) yield node as node1 
+CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:coalesce(nLg.name,'null'), cx:cx}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
+with *, {batches:batches, total:total,  timeTaken: timeTaken,  committedOperations: committedOperations,  failedOperations: failedOperations,  failedBatches: failedBatches,  retries: retries,  errorMessages: errorMessages,  batch: batch,  operations: operations,  wasTerminated:wasTerminated } as res_map 
+CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(i)+'_results',apoc.convert.toString( coalesce(res_map,'null'))) yield node as node1 
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(i)+'_iteration',coalesce(iteration,'null')) yield node as node2
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(i)+'_action',coalesce(action,'null')) yield node as node3
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(i)+'_replaces', coalesce( apoc.convert.toString( replaces), 'null')) yield node as node4
@@ -319,7 +320,9 @@ with *, reduce(s=str, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) 
 with *, reduce(s=cx.iteration, x in keys(replaces) | replace(s,'<<'+x+'>>',replaces[x])) as iteration
 with cx, nLg, s, iteration, replaces, node_type, CASE WHEN s.enable=true THEN action ELSE 'return 0' END as action
 
-CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ cx: cx, dt:coalesce(nLg.name,'null') }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated with *, apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages}) as res_map_str CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+node_type+'_results',coalesce(res_map_str,'null')) yield node as node1 
+CALL apoc.periodic.iterate(iteration,action,{batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ cx: cx, dt:coalesce(nLg.name,'null') }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
+with *, {batches:batches, total:total,  timeTaken: timeTaken,  committedOperations: committedOperations,  failedOperations: failedOperations,  failedBatches: failedBatches,  retries: retries,  errorMessages: errorMessages,  batch: batch,  operations: operations,  wasTerminated:wasTerminated } as res_map 
+CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+node_type+'_results',apoc.convert.toString(coalesce(res_map,'null'))) yield node as node1 
 
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+node_type+'_iteration',coalesce(iteration,'null')) yield node as node2
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+node_type+'_action',coalesce(action,'null')) yield node as node3
@@ -376,7 +379,8 @@ with cx, nLg, item, apoc.map.merge(lcx, {iteration:reduce(s=cx.iteration, x in k
 //CALL apoc.create.setProperty(nLg,'aaa4',"true") yield node as  node44
 with cx, nLg, item, apoc.map.merge(lcx, {prop:'step_'+lcx.s.i+'_'+lcx.s.t+'_'+item}) as lcx
 
-CALL apoc.periodic.iterate(lcx.iteration, lcx.action, {batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:coalesce(nLg.name,'null'), cx:cx, nLg:nLg}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated with *, {batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages} as res_map
+CALL apoc.periodic.iterate(lcx.iteration, lcx.action, {batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:coalesce(nLg.name,'null'), cx:cx, nLg:nLg}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
+with *, {batches:batches, total:total,  timeTaken: timeTaken,  committedOperations: committedOperations,  failedOperations: failedOperations,  failedBatches: failedBatches,  retries: retries,  errorMessages: errorMessages,  batch: batch,  operations: operations,  wasTerminated:wasTerminated } as res_map
 
 with *, {results:apoc.convert.toString(coalesce(res_map,'null')), iteration: lcx.iteration, action: lcx.action, replaces:lcx.replaces} as log_map 
 UNWIND keys(log_map) as log
@@ -424,9 +428,10 @@ Set nLg.bbbb=nLg.bbbb+[4] with *
 with *, s.iterations[index] as iteration
 with cx, nLg, s, action, index, replaces, reduce(s=iteration, x in keys(replaces) | replace(s,"<<"+x+">>", replaces[x])) as iteration
 Set nLg.bbbb=nLg.bbbb+[5] with *
-CALL apoc.periodic.iterate(iteration,action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ cx: cx}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated with *, apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages, batch:batch, operations:operations, wasTerminated:wasTerminated}) as res_map_str 
+CALL apoc.periodic.iterate(iteration,action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ cx: cx}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
+with *, {batches:batches, total:total,  timeTaken: timeTaken,  committedOperations: committedOperations,  failedOperations: failedOperations,  failedBatches: failedBatches,  retries: retries,  errorMessages: errorMessages,  batch: batch,  operations: operations,  wasTerminated:wasTerminated } as res_map 
 Set nLg.bbbb=nLg.bbbb+[6] with *
-CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(index)+'_results',coalesce(res_map_str,'null')) yield node as node1
+CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(index)+'_results',apoc.convert.toString(coalesce(res_map,'null'))) yield node as node1
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(index)+'_iteration',coalesce(iteration,'null')) yield node as node2
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(index)+'_action',coalesce(action,'null')) yield node as node3
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+toString(index)+'_replaces', coalesce(apoc.convert.toString(replaces),'null')) yield node as node4
@@ -456,7 +461,9 @@ UNWIND s.iterations AS iteration
 Set nLg.aaaa=nLg.aaaa+[4] with *
 with cx, nLg, s, action, replaces, reduce(s=iteration, x in keys(replaces) | replace(s,"<<"+x+">>", replaces[x])) as iteration
 Set nLg.aaaa=nLg.aaaa+[5] with *
-CALL apoc.periodic.iterate(iteration,action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ cx: cx }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated with *, apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages, batch:batch, operations:operations, wasTerminated:wasTerminated}) as res_map_str CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+'_results',coalesce(res_map_str,'null')) yield node as node1
+CALL apoc.periodic.iterate(iteration,action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ cx: cx }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
+with *, {batches:batches, total:total,  timeTaken: timeTaken,  committedOperations: committedOperations,  failedOperations: failedOperations,  failedBatches: failedBatches,  retries: retries,  errorMessages: errorMessages,  batch: batch,  operations: operations,  wasTerminated:wasTerminated } as res_map 
+CALL apoc.create.setProperty( nLg,'step_'+s.i+'_'+s.t+'_'+'_results', apoc.convert.toString(coalesce( res_map,'null')) ) yield node as node1
 Set nLg.aaaa=nLg.aaaa+[6] with *
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+'_iteration',coalesce(iteration,'null')) yield node as node2
 CALL apoc.create.setProperty(nLg,'step_'+s.i+'_'+s.t+'_'+'_action',coalesce(action,'null')) yield node as node3
