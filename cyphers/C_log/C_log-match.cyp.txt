@@ -1,6 +1,9 @@
 //C_log show
 //https://github.com/wirsel/neoj/blob/master/cyphers/C_log/C_log-match.cyp.txt
+with ['action', 'error', 'result'] as filter_list
 match(lg:C_log)
-with lg order by lg.identifier desc limit 1
+with lg, filter_list order by lg.identifier desc limit 1
 unwind apoc.coll.sort(keys(lg)) as key
+with *
+where any(filter in filter_list where tolower(key) contains filter )
 return key, properties(lg)[key]
