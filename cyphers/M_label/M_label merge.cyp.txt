@@ -16,13 +16,27 @@ set nLg.steps=nLg.steps + [size(nLg.steps+1)]
 set nLg.comments=nLg.comments + ["nLg created"]
 with cx, nLg, apoc.map.merge(cxn, {nLg: nLg }) as cxn
 
+with *, [
+	{enable:true,  t:"EDGES_update"},
+ 	{enable:false, t:"EDGES_delete"},  
+ 	{enable:false,  t:"NODES_delete"},           
+ 	{enable:true,  t:"NODES_merge"},   
+ 	{enable:true,  t:"EDGES_merge"},     
+ 	{enable:true,  t:"EDGES_history"},
+ 	{enable:true,  t:"NODES_history"}    
+] as step_list
+
+with cx,  nLg, [x in range(0, size(step_list)-1) | apoc.map.merge(step_list[x], {index:x, i:tostring(x)})]  as step_list
+with cx, nLg, reduce(map={}, x in range(0, size(step_list)-1) | apoc.map.setKey( map, step_list[x].t, step_list[x])) as steps_maps with nLg, apoc.map.merge(cx, {steps_maps:steps_maps} ) as cx
+Set nLg.steps_maps=apoc.convert.toString(cx.steps_maps) with *
+
 //---------------------------------------------
 //---- The input to be processed ------------------
 //---------------------------------------------
 CALL apoc.schema.nodes() yield label
-with cxn, nLg, cx, COLLECT(label) as input_items
-with cxn, nLg, apoc.map.merge( cx, {labels:input_items }) as cx
-with cxn, nLg, apoc.map.merge( cx, {root_id_list:["schema"]}) as cx
+with nLg, cx, COLLECT(label) as input_items
+with nLg, apoc.map.merge( cx, {labels:input_items }) as cx
+with nLg, apoc.map.merge( cx, {root_id_list:["schema"]}) as cx
 
 
 
@@ -33,7 +47,7 @@ with cxn, nLg, apoc.map.merge( cx, {root_id_list:["schema"]}) as cx
 //cx.root.class := the class of the root node
 //cx.root.pk.key := the key which holds the unique contraint for the root node
 //cx.root.pk.value := the value for the primary key thta identifiers the root node
-with cxn, nLg, apoc.map.merge(cx, 
+with nLg, apoc.map.merge(cx, 
 {
    	root: {
 		class:'M_schema', 
@@ -46,7 +60,7 @@ with cxn, nLg, apoc.map.merge(cx,
 //cx.node_id_map.<class label>>.on_create_set := holds the the cypher fragment that is executed when nodes of this calls are created with MERGE
 //cx.node_id_map.<class label>>.on_match_set := holds the the cypher fragment that is executed when nodes of this calls are matched with MERGE
 //cx.node_id_map.<class label>>.must_have_edge := holds the the <<edge_type>> that must exists for th enode. If no edge exists the node is not in use anymore. Instead of deleting the node,  the <<status>> attribute will be set to <<cx.status.history>>.
-with cxn, nLg, cx, { 
+with nLg, cx, { 
 	M_schema:{
     	id:'cx.root.pk.value',
         on_create_set:'{name:n.identifier, type:type, batchtime:dt, createdAt:datetime(), status:cx.status.new}',
@@ -62,15 +76,15 @@ with cxn, nLg, cx, {
         must_have_edge: 'HAS_LABEL'
 	}
 } as node_id_maps
-with cxn, nLg, apoc.map.merge(cx, {node_id_maps: node_id_maps}) as cx
+with nLg, apoc.map.merge(cx, {node_id_maps: node_id_maps}) as cx
 
 //cx.nodes := this list contains the class lables (including the class label of the root) that are effected by this batch run. The order is not relevant. The list is derived from the <<node_id_maps>>
-with cxn, nLg, cx, [keys(cx.node_id_maps)] as nodes
-with cxn, nLg, apoc.map.merge(cx, {nodes: nodes}) as cx
+with nLg, cx, [keys(cx.node_id_maps)] as nodes
+with nLg, apoc.map.merge(cx, {nodes: nodes}) as cx
 
 //cx.nodes_to_delete := here you can define which class of nodes should be deleted before the batch job runs.Remark, adding class labels to this list does not automaticclay enforce deleting. The deletion process step must be enabled under section <<cx.steps>>
-with cxn, nLg, cx, ['M_label'] as nodes_to_delete
-with cxn, nLg, apoc.map.merge(cx, {nodes_to_delete:nodes_to_delete}) as cx
+with nLg, cx, ['M_label'] as nodes_to_delete
+with nLg, apoc.map.merge(cx, {nodes_to_delete:nodes_to_delete}) as cx
 //with cxn, nLg, apoc.map.merge( cx ,{identifier: "schema"} ) as cx  
 
 //---------------------------------------------
@@ -83,15 +97,15 @@ with cxn, nLg, apoc.map.merge(cx, {nodes_to_delete:nodes_to_delete}) as cx
 //cx.edge_id_maps.<<edge>>.in := the class label of the ingoing node
 //cx.edge_id_maps.<<edge>>.input_items := ????
 
-with cxn, nLg, cx, {
+with nLg, cx, {
 	HAS_LABEL:{
     	out:'M_schema' , 
         type:'HAS_LABEL', 
         in:'M_label'}
 } as edges
 
-with cxn, nLg, apoc.map.merge(cx, {edges: edges}) as cx
-with cxn, nLg, cx, { 
+with nLg, apoc.map.merge(cx, {edges: edges}) as cx
+with nLg, cx, { 
 	HAS_LABEL:{
     	out_class: cx.edges["HAS_LABEL"].out,
         in_class: cx.edges["HAS_LABEL"].in,
@@ -100,19 +114,19 @@ with cxn, nLg, cx, {
         in: cx.node_id_maps[cx.edges["HAS_LABEL"].in].id
     }
 } as edge_id_maps
-with cxn, nLg, apoc.map.merge(cx, {edge_id_maps: edge_id_maps}) as cx
+with nLg, apoc.map.merge(cx, {edge_id_maps: edge_id_maps}) as cx
 
 
 
 //cx.edges_to_delete := here you can define which type of edges  should be deleted before the batch job runs.Remark, adding edge types to this list does not automaticclay enforce deleting. The deletion process step must be enabled under section <<cx.steps>>/
-with cxn, cx, nLg, [] as edges_to_delete
-with cxn, nLg, apoc.map.merge(cx, {edges_to_delete:edges_to_delete}) as cx
+with cx, nLg, [] as edges_to_delete
+with nLg, apoc.map.merge(cx, {edges_to_delete:edges_to_delete}) as cx
 
 
 //---------------------------------------------
 //---- Cypher templates ------------------
 //---------------------------------------------
-with cxn, nLg, cx, '
+with nLg, cx, '
 	With $cx as cx
     with *, 
     	\'HAS_LABEL\' as edges, 
@@ -123,17 +137,17 @@ with cxn, nLg, cx, '
     CALL apoc.path.expand(r,edges,labels,0,limit) yield path 	
     return path' 
     as cypherIterate
-with cxn, nLg, apoc.map.merge( cx, {cypherIterate: cypherIterate }) as cx
+with nLg, apoc.map.merge( cx, {cypherIterate: cypherIterate }) as cx
 set nLg.cypherIterate=cx.cypherIterate
 
 with *, 'match(out:<<out>> <<out_id>>)-[e:<<type>>]->(in:<<in>> <<in_id>>)  return e' as edge_delete_template
-with cxn, nLg, apoc.map.merge(cx, {edge_delete_template: edge_delete_template}) as cx
+with nLg, apoc.map.merge(cx, {edge_delete_template: edge_delete_template}) as cx
 with *, {batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1} as iterate_options
-with cxn, nLg, apoc.map.merge(cx, {iterate_options: iterate_options}) as cx    
+with nLg, apoc.map.merge(cx, {iterate_options: iterate_options}) as cx    
 
 //cx.status :== a map where the different values for the <<status>> attribute are defined. The batch updates the <<status>> attributes for effected nodes and edges. PLEASE DO NOT alter this map. If you do so, ,you will probably break the execution of the batch
-with cxn, nLg, apoc.map.merge( cx ,{delete: true} ) as cx
-with cxn, nLg, apoc.map.merge( cx ,{status: {
+with nLg, apoc.map.merge( cx ,{delete: true} ) as cx
+with nLg, apoc.map.merge( cx ,{status: {
 	update: "to be updated", 
     new: "new", 
     actual: "actual",
@@ -141,12 +155,12 @@ with cxn, nLg, apoc.map.merge( cx ,{status: {
     history: "history"}} ) as cx
 
 //cx.iteration := ????
-with cxn, nLg, cx, '
+with nLg, cx, '
 with $cx as cx
 with <<items>> as items
 UNWIND range(0, size(items)-1) as x return {index:x, prev:coalesce(items[x-1],null), this:items[x], next: coalesce(items[x+1],null) } as item_map
 ' as iteration
-with cxn, nLg, apoc.map.merge( cx, {iteration:iteration }) as cx
+with nLg, apoc.map.merge( cx, {iteration:iteration }) as cx
 
 //---------------------------------------------
 //---- controll processing  ------------------
@@ -154,19 +168,6 @@ with cxn, nLg, apoc.map.merge( cx, {iteration:iteration }) as cx
 //cx.steps := within this structure the different steps in the batch can be enabled/disabled
 //cx.steps.<<step>.enable := disable/enable a process step. Disable means the action functions in the process step is set to <<return 0>>, means the batch still iterates over all batch steps but does not take action within the step when the step is disabled 
 //cx.steps.<<step>.iterations := holds an optional list of cypher fragements that are used as <<iterator>> in <<apoc.periodic.iterate>>. Batch steps with these iterates will execute their action function by looping over the iteratos in the list defined here
-with *, [
-	{enable:true,  t:"EDGES_update"},
- 	{enable:false, t:"EDGES_delete"},  
- 	{enable:false,  t:"NODES_delete"},           
- 	{enable:true,  t:"NODES_merge"},   
- 	{enable:true,  t:"EDGES_merge"},     
- 	{enable:true,  t:"EDGES_history"},
- 	{enable:true,  t:"NODES_history"}    
-] as step_list
-with cxn,cx,  nLg, [x in range(0, size(step_list)-1) | apoc.map.merge(step_list[x], {index:x, i:tostring(x)})]  as step_list
-with cxn, cx, nLg, reduce(map={}, x in range(0, size(step_list)-1) | apoc.map.setKey( map, step_list[x].t, step_list[x])) as steps_maps
-Set nLg.steps_maps=apoc.convert.toString(steps_maps)
-with nLg, apoc.map.merge(cx, {steps_maps:steps_maps} ) as cx
 
 with *, {
 	EDGES_update:{ i:[], a:''},
@@ -200,34 +201,33 @@ return value
 } as sia
 with nLg, sia, apoc.map.merge( cx, {sia:sia}) as cx
 
-with *, {
-	EDGES_update:{enable:false, index:1, i:'1', t:"EDGES_update"}, 
- 	EDGES_delete:{enable:false, index:2, i:'2', t:"EDGES_delete"},  
- 	NODES_delete:{enable:false, index:3, i:'3', t:"NODES_delete"},           
- 	NODES_merge:{enable:false, index:4, i:'4', t:"NODES_merge"},   
- 	EDGES_merge:{enable:true, index:5, i:'5', t:"EDGES_merge"},     
- 	EDGES_history:{enable:false, index:6, i:'6', t:"EDGES_history"}
-} as steps_orig
-Set nLg.steps_orig=apoc.convert.toString(steps_orig)
-//with cxn, nLg, apoc.map.merge( cx, {steps:steps}) as cx
+//with *, {
+	//EDGES_update:{enable:false, index:1, i:'1', t:"EDGES_update"}, 
+ 	//EDGES_delete:{enable:false, index:2, i:'2', t:"EDGES_delete"},  
+ 	//NODES_delete:{enable:false, index:3, i:'3', t:"NODES_delete"},           
+ 	//NODES_merge:{enable:false, index:4, i:'4', t:"NODES_merge"},   
+ 	//EDGES_merge:{enable:true, index:5, i:'5', t:"EDGES_merge"},     
+ 	//EDGES_history:{enable:false, index:6, i:'6', t:"EDGES_history"}
+//} as steps_orig
+//Set nLg.steps_orig=apoc.convert.toString(steps_orig)
+//with nLg, apoc.map.merge( cx, {steps:steps}) as cx
 
-with *, {
-	EDGES_update:{enable:true, index:1, i:'1', t:"EDGES_update", 
-    	iterations:sia['EDGES_update'].i, action: sia['EDGES_update'].a },
- 	EDGES_delete:{enable:false, index:2, i:'2', t:"EDGES_delete",  
-    	iterations:sia['EDGES_delete'].i, action: sia['EDGES_delete'].a },
- 	NODES_delete:{enable:false, index:3, i:'3', t:"NODES_delete",
-    	iterations:sia['NODES_delete'].i, action: sia['NODES_delete'].a },
- 	NODES_merge:{enable:false, index:4, i:'4', t:"NODES_merge",
-    	iterations:sia['NODES_merge'].i, action: sia['NODES_merge'].a },
- 	EDGES_merge:{enable:true, index:5, i:'5', t:"EDGES_merge",
-    	iterations:sia['EDGES_merge'].i, action: sia['EDGES_merge'].a },
- 	EDGES_history:{enable:false, index:6, i:'6', t:"EDGES_history",
-    	iterations:sia['EDGES_history'].i, action: sia['EDGES_history'].a }
-} as steps
-Set nLg.steps=apoc.convert.toString(steps)
+//with *, {
+	//EDGES_update:{enable:true, index:1, i:'1', t:"EDGES_update", 
+    	//iterations:sia['EDGES_update'].i, action: sia['EDGES_update'].a },
+ 	//EDGES_delete:{enable:false, index:2, i:'2', t:"EDGES_delete",  
+    	//iterations:sia['EDGES_delete'].i, action: sia['EDGES_delete'].a },
+ 	//NODES_delete:{enable:false, index:3, i:'3', t:"NODES_delete",
+    	//iterations:sia['NODES_delete'].i, action: sia['NODES_delete'].a },
+ 	//NODES_merge:{enable:false, index:4, i:'4', t:"NODES_merge",
+    	//iterations:sia['NODES_merge'].i, action: sia['NODES_merge'].a },
+ 	//EDGES_merge:{enable:true, index:5, i:'5', t:"EDGES_merge",
+    	//iterations:sia['EDGES_merge'].i, action: sia['EDGES_merge'].a },
+ 	//EDGES_history:{enable:false, index:6, i:'6', t:"EDGES_history",
+    	//iterations:sia['EDGES_history'].i, action: sia['EDGES_history'].a }
+//} as steps
+//Set nLg.steps=apoc.convert.toString(steps)
 //with nLg, sia, apoc.map.merge( cx, {steps:steps}) as cx
-
 
 Set nLg.steps_maps=apoc.convert.toString(cx.steps_maps)
 with *, [key in keys(cx.steps_maps) | apoc.map.merge(cx.steps_maps[key],{iterations:sia[key].i, action: sia[key].a})] as buffer
@@ -308,7 +308,7 @@ with cx, nLg, COLLECT(iteration) as coll
 //---------------------------------------------
 with cx, nLg, cx.steps["NODES_merge"] as s
 UNWIND keys(cx.node_id_maps) as node_type
-//with cx, cxn, nLg, "C_cyp_query" as node_type
+//with cx, nLg, "C_cyp_query" as node_type
 with cx, nLg, s, node_type, cx.node_id_maps[node_type] as node_id_map
 with cx, nLg, s, node_type, {
 	var: "n",
