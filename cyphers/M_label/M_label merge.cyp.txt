@@ -170,8 +170,8 @@ with nLg, apoc.map.merge( cx, {iteration:iteration }) as cx
 //cx.steps.<<step>.iterations := holds an optional list of cypher fragements that are used as <<iterator>> in <<apoc.periodic.iterate>>. Batch steps with these iterates will execute their action function by looping over the iteratos in the list defined here
 
 with *, {
-	EDGES_update:{ i:[], a:''},
- 	EDGES_delete:{ i:[], a:''}, 
+	EDGES_update:{ i:[], a:'', items:['_']},
+ 	EDGES_delete:{ i:[], a:'', items:['_']}, 
  	NODES_delete:{
 		i:[
         	' match(root:'+cx.root.class+' {'+cx.root.pk.key+':\''+cx.root.pk.value+'\'}) with root CALL apoc.path.subgraphNodes(root,{maxlevel:0,sequence:\'M_schema,HAS_LABEL>|HAS_LABEL_HISTORY>,M_label\'}) yield node return node as node'        
@@ -182,27 +182,27 @@ with *, cx.nodes_to_delete as items
 with *, any(item in items where apoc.label.exists(n,item)) as test
 CALL apoc.do.when(test,"with $n as n detach delete n return n","",{n:n}) yield value
 return value
-'
+', items:['_']
     },           
- 	NODES_merge:{ i:[], a:''},   
- 	EDGES_merge:{ i:[cx.iteration], a:''},     
+ 	NODES_merge:{ i:[], a:'', items:['_']},   
+ 	EDGES_merge:{ i:[cx.iteration], a:'', items:['_']},     
  	EDGES_history:{
 		i:[
         	'match(root:'+cx.root.class+' {'+cx.root.pk.key+':\''+cx.root.pk.value+'\'}) with root CALL apoc.path.subgraphNodes(root,{maxlevel:0,sequence:\'M_schema,HAS_LABEL>,M_label\'}) yield node return node as node'        
         ],
-        a:''
+        a:'', items:['_']
     },     
  	NODES_history:{
         i:[
         	'match(root:'+cx.root.class+' {'+cx.root.pk.key+':\''+cx.root.pk.value+'\'}) with root CALL apoc.path.subgraphNodes(root,{maxlevel:0,sequence:\'M_schema,HAS_LABEL>|HAS_LABEL_HISTORY>,M_label\'}) yield node return node as node'
         ],
-        a:''
+        a:'', items:['_']
     }
 } as sia
 with nLg, sia, apoc.map.merge( cx, {sia:sia}) as cx
 
 Set nLg.steps_maps=apoc.convert.toString(cx.steps_maps)
-with *, [key in keys(cx.steps_maps) | apoc.map.merge(cx.steps_maps[key],{iterations:sia[key].i, action: sia[key].a})] as buffer
+with *, [key in keys(cx.steps_maps) | apoc.map.merge(cx.steps_maps[key],{iterations:sia[key].i, items:sia[key].items, action: sia[key].a})] as buffer
 //with *, reduce(map={}, item in buffer | apoc.map.merge(map,{key:buffer[key]})) as buffer2
 
 with nLg, apoc.map.merge(cx, {steps: apoc.map.fromPairs([item in buffer|[item.t,item]])}) as cx
@@ -213,10 +213,9 @@ Set nLg.steps_new=apoc.convert.toString(cx.steps)
 //---------------------------------------------
 //this is the first step in the batch. The effected subgraph is traversed and the <<status>> attribute for  every existing node and edge in the subgraph is set to <<cx.status.update>> 
 with cx, nLg, {} as lcx
-with cx, nLg, apoc.map.merge(lcx, {s:cx.steps["EDGES_update"]}) as lcx //with *, cx.steps["EDGES_update"] as s
+with cx, nLg, apoc.map.merge(lcx, {s:cx.steps["EDGES_update"]}) as lcx
 
-UNWIND ['_'] as item
-
+UNWIND lcx.s.items as item
 with *, {root_type:cx.root.class, root_id_map:"{"+cx.root.pk.key+":\'"+cx.root.pk.value+"\'}"} as replaces
 with cx, nLg, item, apoc.map.merge(lcx, {replaces:replaces}) as lcx
 with *,'with path as path, $cx as cx FOREACH (n IN relationships(path)| SET n += {status:cx.status.update, visitCnt:0} )' as action
