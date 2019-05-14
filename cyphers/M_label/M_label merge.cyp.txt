@@ -223,9 +223,8 @@ with cx, nLg, apoc.map.setKey(lcx, 'replaces', replaces) as lcx
 
 //---action---
 with *,'with path as path, $cx as cx FOREACH (n IN relationships(path)| SET n += {status:cx.status.update, visitCnt:0} )' as action
-with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,"<<"+x+">>",lcx.replaces[x])) as action
-with cx, nLg, lcx, CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END as action
-with cx, nLg, apoc.map.setKey(lcx, 'action', action) as lcx
+with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
+with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
 
 //---iterations---
 UNWIND range(0,size(lcx.s.iterations)-1) AS i //EDGES_preparation
@@ -262,7 +261,7 @@ with cx, nLg, COLLECT(lcx.item) as coll //EDGES_preparation
 //---------------------------------------------
 with *, cx.steps['EDGES_delete'] as s
 with cx, nLg, {s:s, lg_prop:'step_'+s.i+'_'+s.t} as lcx
-
+with cx, nLg, apoc.map.setKey(lcx, 'replaces',{}) as lcx
 with *, '
 	with $cx as cx , $logger as logger
 	UNWIND lcx.s.items as item //EDGES_delete //UNWIND cx.edges_to_delete as edge_to_delete
@@ -279,8 +278,9 @@ with *, '
 	with COLLECT(edge_to_delete) as coll
 	return size(coll) as cnt
 ' as action
-with cx, nLg, lcx, CASE WHEN lcx.s.enable=true THEN 'delete e' ELSE 'return 0' END as action
-with cx, nLg, apoc.map.setKey(lcx, action, action) as lcx
+with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
+with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
+
 ////with cx, nLg, lcx, '' as value 
 CALL apoc.do.when( size(cx.edges_to_delete)>0, lcx.action,"",{cx:cx, logger: nLg}) yield value 
 CALL apoc.create.setProperty(nLg,'step_'+lcx.s.i+'_'+lcx.s.t+'_'+'_action',coalesce(lcx.action,'null')) yield node as node3
@@ -293,9 +293,9 @@ with *, cx.steps['NODES_delete'] as s
 with cx, nLg, {s:s, lg_prop:'step_'+s.i+'_'+s.t} as lcx
 UNWIND lcx.s.items as item //NODES_delete
 with cx, nLg, apoc.map.merge(lcx, {item:item, replaces:{}}) as lcx
-with cx, nLg, lcx, reduce(s=lcx.s.action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) as action
-with cx, nLg, lcx, CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END as action
-with cx, nLg, apoc.map.merge(lcx, {action:action}) as lcx
+with *, lcx.s.action as action
+with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
+with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
 
 //---iterations---
 UNWIND range(0,size(lcx.s.iterations)-1) AS i //NODES_delete
@@ -358,9 +358,8 @@ with *, '
 	on create set <<var>> += <<on_create_set>>
 	on match set <<var>> += <<on_match_set>>
 ' as action
-with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) as action
-with cx, nLg, lcx, CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END as action
-with cx, nLg, apoc.map.setKey(lcx,'action', action) as lcx
+with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
+with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
 
 //---iterations---
 UNWIND range(0,size(lcx.s.iterations)-1) AS i //NODES_merge
@@ -435,8 +434,8 @@ with *, '
     with *, CASE WHEN e.visitCnt=1 THEN cx.status.new ELSE e.status END as status
     Set e.status=status
 ' as action
-with cx, nLg, lcx, CASE WHEN cx.steps["EDGES_merge"].enable=true THEN reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) ELSE 'return 0' END as action
-with cx, nLg, apoc.map.setKey(lcx, 'action', action) as lcx
+with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
+with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
 
 //---iterations---
 UNWIND range(0,size(lcx.s.iterations)-1) AS i //EDGES_merge
@@ -493,10 +492,9 @@ with *, '
 ' as action 
 
 
-with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,"<<"+x+">>", lcx.replaces[x])) as action
-with cx, nLg, lcx, CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END as action
-with cx, nLg, apoc.map.merge(lcx,{action:action}) as lcx
-with *
+with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
+with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
+
 //---iterations---
 UNWIND range(0,size(lcx.s.iterations)-1) AS i //EDGES_history
 with cx, nLg, apoc.map.setKey(lcx,'index',i) as lcx
@@ -544,9 +542,8 @@ with *, '
 	CALL apoc.do.when(test,\'\',\'with $cx as cx, $n as n set n.status=cx.status.history return n\',{cx:cx, n:n}) yield value
 	return n
 ' as action 
-with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,"<<"+x+">>", lcx.replaces[x])) as action
-with cx, nLg, lcx, CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END as action
-with cx, nLg, apoc.map.setKey(lcx,'action', action) as lcx
+with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
+with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
 
 //---iterations---
 UNWIND range(0,size(lcx.s.iterations)-1) AS i //NODES_history
