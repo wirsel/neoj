@@ -23,8 +23,8 @@ with *, [
  	{enable:false,  t:"NODES_delete", mandatory:false},          
  	{enable:true,  t:"NODES_merge", mandatory:false},  
  	{enable:true,  t:"EDGES_merge", mandatory:false, dependencies:["EDGES_preparation"]},    
- 	{enable:true,  t:"EDGES_history", mandatory:false},
- 	{enable:true,  t:"NODES_history", mandatory:false}
+ 	{enable:false,  t:"EDGES_history", mandatory:false},
+ 	{enable:false,  t:"NODES_history", mandatory:false}
 ] as step_list
 
 with cx,  nLg, [x in range(0, size(step_list)-1) | apoc.map.merge(step_list[x], {index:x, i:tostring(x)})]  as step_list
@@ -369,7 +369,6 @@ with cx, nLg, {s:s, lg_prop:'step_'+s.i+'_'+s.t} as lcx
 CALL apoc.do.when(size(lcx.s.items)=0,'CALL apoc.create.setProperty($nLg, $lcx.lg_prop+\'_WARNING = no <<edge_types>> to merge','', {nLg:nLg, lcx:lcx}) yield value  
 
 UNWIND lcx.s.items as item //EDGES_merge //UNWIND keys(lcx.items) as item
-
 //with *, cx.edges[item] as edge_map, cx.edge_id_maps[item] as edge_id_map
 with cx, nLg, item, apoc.map.merge(lcx, {edge_map:cx.edges[item], edge_id_map:cx.edge_id_maps[item]} ) as lcx
 with cx, nLg, item, apoc.map.merge(lcx, {replaces:{
@@ -382,6 +381,8 @@ with cx, nLg, item, apoc.map.merge(lcx, {replaces:{
 	on_match_set: '{status:cx.status.actual}',
     items:lcx.edge_id_map.input_items
 }})  as lcx
+
+//---action---
 with *, '
 	with item_map as item_map, $cx as cx, $dt as dt, $nLg as nLg
 	with *, <<in_id_cyp>> as id_in, <<out_id_cyp>> as id_out
@@ -398,11 +399,15 @@ with *, '
     //Set e.visitCnt=coalesce(e.visitCnt,0)+1
     with *, CASE WHEN e.visitCnt=1 THEN cx.status.new ELSE e.status END as status
     Set e.status=status
-' as str
+' as action
+with cx, nLg, lcx, item, CASE WHEN cx.steps["EDGES_merge"].enable=true THEN reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) ELSE 'return 0' END as action
+with cx, nLg, item, apoc.map.setKey(lcx, 'action', action) as lcx
 
-with *, CASE WHEN cx.steps["EDGES_merge"].enable=true THEN reduce(s=str, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) ELSE 'return 0' END as action
-with cx, nLg, item, apoc.map.merge(lcx, {action:action}) as lcx
-with cx, nLg, item, apoc.map.merge(lcx, {iteration:reduce(s=cx.iteration, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) }) as lcx
+//---iteration
+UNWIND range(0,size(lcx.s.iterations)-1) AS i
+with cx, nLg, item, apoc.map.setKey(lcx, 'index',i) as lcx
+with *, reduce(s=lcx.s.iterations[lcx.index], x in keys(lcx.replaces) | replace( s,'<<'+x+'>>', lcx.replaces[x] )) as iteration
+with cx, nLg, item, apoc.map.setKey(lcx, 'iteration',iteration) as lcx
 
 with cx, nLg, item, apoc.map.merge(lcx, {prop:'step_'+lcx.s.i+'_'+lcx.s.t+'_'+item}) as lcx
 
@@ -425,7 +430,8 @@ CALL apoc.do.when(size(replaces_missing_list)>0,'CALL apoc.create.setProperty($n
 
 ////with cx, nLg, lcx, '' as value ////
 CALL apoc.do.when(lcx.res_map.failedOperations>0,'CALL apoc.create.setProperty($nLg, $prop+"_results_WARNING", "failedOperations = "+$cnt) yield node return node','', {nLg:nLg, prop:lcx.prop, cnt: tostring( lcx.res_map.failedOperations)}) yield value as valueFailed  
-   
+
+with cx, nLg, lcx, COLLECT(lcx.iteration) as coll
 with cx, nLg, COLLECT(lcx.item) as coll
 
 
