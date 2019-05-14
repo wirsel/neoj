@@ -292,8 +292,9 @@ with cx, nLg, lcx, reduce(s=lcx.s.action, x in keys(lcx.replaces) | replace(s,'<
 with cx, nLg, lcx, CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END as action
 with cx, nLg, apoc.map.merge(lcx, {action:action}) as lcx
 
+//---iterations---
 UNWIND range(0,size(lcx.s.iterations)-1) AS i //NODES_delete
-with cx, nLg, apoc.map.setKey(lcx, 'index',i) as lcx
+with cx, nLg, apoc.map.setKey(lcx,'index',i) as lcx
 with *, reduce(s=lcx.s.iterations[lcx.index], x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) as iteration
 with cx, nLg, apoc.map.setKey(lcx, 'iteration',iteration) as lcx
 
@@ -344,12 +345,11 @@ with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'
 with cx, nLg, lcx, CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END as action
 with cx, nLg, apoc.map.setKey(lcx,'action', action) as lcx
 
-//---iteration--
+//---iterations---
 UNWIND range(0,size(lcx.s.iterations)-1) AS i //NODES_merge
-with cx, nLg, apoc.map.setKey(lcx,'index', i) as lcx
-with cx, nLg, lcx, lcx.s.iterations[lcx.index] as iteration
-with cx, nLg, lcx, reduce(s=iteration, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) as iteration
-with cx, nLg, apoc.map.setKey(lcx,'iteration', iteration) as lcx
+with cx, nLg, apoc.map.setKey(lcx,'index',i) as lcx
+with *, reduce(s=lcx.s.iterations[lcx.index], x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) as iteration
+with cx, nLg, apoc.map.setKey(lcx, 'iteration',iteration) as lcx
 
 Call apoc.periodic.iterate(lcx.iteration, lcx.action,{batchSize:10000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ cx: cx, dt:coalesce(nLg.name,'null') }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
 ////with *, {} as res_map 
@@ -409,11 +409,11 @@ with *, '
 with cx, nLg, lcx, item, CASE WHEN cx.steps["EDGES_merge"].enable=true THEN reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) ELSE 'return 0' END as action
 with cx, nLg, item, apoc.map.setKey(lcx, 'action', action) as lcx
 
-//---iteration
+//---iterations---
 UNWIND range(0,size(lcx.s.iterations)-1) AS i //EDGES_merge
-with cx, nLg, item, apoc.map.setKey(lcx, 'index',i) as lcx
-with *, reduce(s=lcx.s.iterations[lcx.index], x in keys(lcx.replaces) | replace( s,'<<'+x+'>>', lcx.replaces[x] )) as iteration
-with cx, nLg, item, apoc.map.setKey(lcx, 'iteration',iteration) as lcx
+with cx, nLg, apoc.map.setKey(lcx,'index',i) as lcx, item
+with *, reduce(s=lcx.s.iterations[lcx.index], x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) as iteration
+with cx, nLg, apoc.map.setKey(lcx, 'iteration',iteration) as lcx, item
 
 with cx, nLg, item, apoc.map.merge(lcx, {prop:'step_'+lcx.s.i+'_'+lcx.s.t+'_'+item}) as lcx
 
@@ -469,11 +469,12 @@ with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,"<<"+x+"
 with cx, nLg, lcx, CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END as action
 with cx, nLg, apoc.map.merge(lcx,{action:action}) as lcx
 with *
-UNWIND range(0,size(lcx.s.iterations)-1) AS index //EDGES_history
-with cx, nLg, apoc.map.setKey(lcx,'index', index) as lcx
-with *, lcx.s.iterations[lcx.index] as iteration
-with cx, nLg, lcx, reduce(s=iteration, x in keys(lcx.replaces) | replace(s,"<<"+x+">>", lcx.replaces[x])) as iteration
-with cx, nLg, apoc.map.merge(lcx,{iteration:iteration}) as lcx
+//---iterations---
+UNWIND range(0,size(lcx.s.iterations)-1) AS i //EDGES_history
+with cx, nLg, apoc.map.setKey(lcx,'index',i) as lcx
+with *, reduce(s=lcx.s.iterations[lcx.index], x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) as iteration
+with cx, nLg, apoc.map.setKey(lcx, 'iteration',iteration) as lcx
+
 Call apoc.periodic.iterate(lcx.iteration,lcx.action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ nLg:nLg, cx: cx}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
 ////with *, {} as res_map ////
 with cx, nLg, apoc.map.setKey(lcx,'res_map', {batches:batches, total:total,  timeTaken: timeTaken,  committedOperations: committedOperations,  failedOperations: failedOperations,  failedBatches: failedBatches,  retries: retries,  errorMessages: errorMessages,  batch: batch,  operations: operations,  wasTerminated:wasTerminated } ) as lcx
@@ -507,12 +508,11 @@ with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,"<<"+x+"
 with cx, nLg, lcx, CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END as action
 with cx, nLg, apoc.map.setKey(lcx,'action', action) as lcx
 
-UNWIND range(0,size(lcx.s.iterations)-1) AS index //NODES_history
-with cx, nLg, apoc.map.setKey(lcx,'index', index) as lcx
-with cx, nLg, lcx, lcx.s.iterations[lcx.index] as iteration
-
-with cx, nLg, lcx, reduce(s=iteration, x in keys(lcx.replaces) | replace(s,"<<"+x+">>", lcx.replaces[x])) as iteration
-with cx, nLg, apoc.map.setKey(lcx,'iteration', iteration) as lcx
+//---iterations---
+UNWIND range(0,size(lcx.s.iterations)-1) AS i //NODES_history
+with cx, nLg, apoc.map.setKey(lcx,'index',i) as lcx
+with *, reduce(s=lcx.s.iterations[lcx.index], x in keys(lcx.replaces) | replace(s,'<<'+x+'>>',lcx.replaces[x])) as iteration
+with cx, nLg, apoc.map.setKey(lcx, 'iteration',iteration) as lcx
 
 Call apoc.periodic.iterate(lcx.iteration,lcx.action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ cx: cx }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated  
 ////with *, {} as res_map ////
