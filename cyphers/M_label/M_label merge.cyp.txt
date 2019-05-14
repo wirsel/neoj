@@ -189,19 +189,65 @@ CALL apoc.do.when(test,"with $n as n detach delete n return n","",{n:n}) yield v
 return value
 ', items:['_']
     },           
- 	NODES_merge:{ i:[cx.iteration], a:'', items: keys(cx.node_id_maps)},   
- 	EDGES_merge:{ i:[cx.iteration], a:'', items: keys(cx.edges)},     
+ 	NODES_merge:{ 
+ 		i:[cx.iteration], 
+ 		a:'
+	with item_map as item_map, \'<<type>>\' as type, $cx as cx, $dt as dt
+	with *, <<id>> as id
+	with *, <<identprops>> as identprops
+	MERGE(<<var>>:<<type>> <<identprops>>)
+	on create set <<var>> += <<on_create_set>>
+	on match set <<var>> += <<on_match_set>>', 
+ 		items: keys(cx.node_id_maps)
+ 	},   
+ 	EDGES_merge:{ 
+ 		i:[cx.iteration], 
+ 		a:'
+	with item_map as item_map, $cx as cx, $dt as dt, $nLg as nLg
+	with *, <<in_id_cyp>> as id_in, <<out_id_cyp>> as id_out
+	where not id_out is null and not id_in is null
+	with *
+	MATCH(out:<<type_out>> {identifier:id_out})
+	MATCH(in:<<type_in>> {identifier:id_in})
+	with *
+	OPTIONAL MATCH(out)-[oe:<<edge_type>>]->(in)
+	with *, CASE WHEN not oe is null and oe.batchCreatedAt=$nLg.name THEN {status:oe.status} ELSE <<on_match_set>> END as on_match_set
+	MERGE(out)-[e:<<edge_type>>]->(in)
+	on create set e += <<on_create_set>>
+	on match set e += <<on_match_set>>
+    //Set e.visitCnt=coalesce(e.visitCnt,0)+1
+    with *, CASE WHEN e.visitCnt=1 THEN cx.status.new ELSE e.status END as status
+    Set e.status=status', 
+ 		items: keys(cx.edges)
+ 	},     
  	EDGES_history:{
 		i:[
         	'match(root:'+cx.root.class+' {'+cx.root.pk.key+':\''+cx.root.pk.value+'\'}) with root CALL apoc.path.subgraphNodes(root,{maxlevel:0,sequence:\'M_schema,HAS_LABEL>,M_label\'}) yield node return node as node'        
         ],
-        a:'', items:['_']
+        a:'
+	with node as node, $cx as cx
+	MATCH(node)-[e]->(other)
+	with *, CASE WHEN (node)-[e]->(other) THEN node.type+">"+type(e)+">"+other.type ELSE other.type+">"+type(e)+">"+node.type END  as out_type_in     
+	Where e.status =cx.status.update and out_type_in in cx.out_type_in_list
+	set e.status =cx.status.deleted
+	with *
+	CALL apoc.create.relationship(node,type(e)+<<HISTORY>>,{createdAt:datetime()},other) yield rel
+	delete e
+	return node', 
+		items:['_']
     },     
  	NODES_history:{
         i:[
         	'match(root:'+cx.root.class+' {'+cx.root.pk.key+':\''+cx.root.pk.value+'\'}) with root CALL apoc.path.subgraphNodes(root,{maxlevel:0,sequence:\'M_schema,HAS_LABEL>|HAS_LABEL_HISTORY>,M_label\'}) yield node return node as node'
         ],
-        a:'', items:['_']
+        a:'
+	with node as n, $cx as cx  
+	with *, n.type as node_type
+	with *, cx.node_id_maps[node_type].must_have_edge as must_have_edge
+	with *, apoc.node.relationship.exists(n,must_have_edge)  as test
+	CALL apoc.do.when(test,\'\',\'with $cx as cx, $n as n set n.status=cx.status.history return n\',{cx:cx, n:n}) yield value
+	return n', 
+		items:['_']
     }
 } as sia
 with nLg, sia, apoc.map.merge( cx, {sia:sia}) as cx
@@ -297,6 +343,8 @@ with *, cx.steps['NODES_delete'] as s
 with cx, nLg, {s:s, lg_prop:'step_'+s.i+'_'+s.t} as lcx
 UNWIND lcx.s.items as item //NODES_delete
 with cx, nLg, apoc.map.merge(lcx, {item:item, replaces:{}}) as lcx
+
+//---action---
 with *, lcx.s.action as action
 with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
 with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
@@ -354,14 +402,9 @@ with *, {
     items:node_id_map.input_items
 } as replaces 
 with cx, nLg, apoc.map.setKey(lcx,'replaces', replaces) as lcx
-with *, '
-	with item_map as item_map, \'<<type>>\' as type, $cx as cx, $dt as dt
-	with *, <<id>> as id
-	with *, <<identprops>> as identprops
-	MERGE(<<var>>:<<type>> <<identprops>>)
-	on create set <<var>> += <<on_create_set>>
-	on match set <<var>> += <<on_match_set>>
-' as action
+
+//---action---
+with *, lcx.s.action as action
 with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
 with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
 
@@ -409,7 +452,7 @@ UNWIND lcx.s.items as item //EDGES_merge //UNWIND keys(lcx.items) as item
 //with *, cx.edges[item] as edge_map, cx.edge_id_maps[item] as edge_id_map
 with cx, nLg,  apoc.map.setKey(lcx,'item',item) as lcx
 with cx, nLg,  apoc.map.merge(lcx, {edge_map:cx.edges[lcx.item], edge_id_map:cx.edge_id_maps[lcx.item]} ) as lcx
-with cx, nLg,  apoc.map.merge(lcx, {replaces:{
+with cx, nLg,  apoc.map.setKey(lcx, 'replaces', {
 	out_id_cyp: lcx.edge_id_map.out, 
     type_out: lcx.edge_map.out, 
     edge_type: lcx.edge_map.type, 
@@ -418,26 +461,10 @@ with cx, nLg,  apoc.map.merge(lcx, {replaces:{
 	on_create_set: '{visitCnt:1, index:item_map.index, status:cx.status.new, createdAt:datetime(), batchCreatedAt:dt}',
 	on_match_set: '{status:cx.status.actual}',
     items:lcx.edge_id_map.input_items
-}})  as lcx
+})  as lcx
 
 //---action---
-with *, '
-	with item_map as item_map, $cx as cx, $dt as dt, $nLg as nLg
-	with *, <<in_id_cyp>> as id_in, <<out_id_cyp>> as id_out
-	where not id_out is null and not id_in is null
-	with *
-	MATCH(out:<<type_out>> {identifier:id_out})
-	MATCH(in:<<type_in>> {identifier:id_in})
-	with *
-	OPTIONAL MATCH(out)-[oe:<<edge_type>>]->(in)
-	with *, CASE WHEN not oe is null and oe.batchCreatedAt=$nLg.name THEN {status:oe.status} ELSE <<on_match_set>> END as on_match_set
-	MERGE(out)-[e:<<edge_type>>]->(in)
-	on create set e += <<on_create_set>>
-	on match set e += <<on_match_set>>
-    //Set e.visitCnt=coalesce(e.visitCnt,0)+1
-    with *, CASE WHEN e.visitCnt=1 THEN cx.status.new ELSE e.status END as status
-    Set e.status=status
-' as action
+with *, lcx.s.action as action
 with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
 with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
 
@@ -482,18 +509,9 @@ with cx, nLg, apoc.map.setKey(lcx, 'replaces', {HISTORY:'"_HISTORY"'}) as lcx
 UNWIND lcx.s.items as item //EDGES_history
 
 with cx, nLg, apoc.map.setKey(lcx,'item', item) as lcx
-with *, '
-	with node as node, $cx as cx
 
-	MATCH(node)-[e]->(other)
-	with *, CASE WHEN (node)-[e]->(other) THEN node.type+">"+type(e)+">"+other.type ELSE other.type+">"+type(e)+">"+node.type END  as out_type_in     
-	Where e.status =cx.status.update and out_type_in in cx.out_type_in_list
-	set e.status =cx.status.deleted
-	with *
-	CALL apoc.create.relationship(node,type(e)+<<HISTORY>>,{createdAt:datetime()},other) yield rel
-	delete e
-	return node
-' as action 
+//---action---
+with *, lcx.s.action as action
 with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
 with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
 
@@ -536,14 +554,9 @@ with cx, nLg, apoc.map.merge(lcx, {replaces: {HISTORY:'"_HISTORY"'}}) as lcx
 
 UNWIND lcx.s.items as item //NODES_history
 with cx, nLg, apoc.map.setKey(lcx,'item', item) as lcx
-with *, ' 
-	with node as n, $cx as cx  
-	with *, n.type as node_type
-	with *, cx.node_id_maps[node_type].must_have_edge as must_have_edge
-	with *, apoc.node.relationship.exists(n,must_have_edge)  as test
-	CALL apoc.do.when(test,\'\',\'with $cx as cx, $n as n set n.status=cx.status.history return n\',{cx:cx, n:n}) yield value
-	return n
-' as action 
+
+//---action---
+with *, lcx.s.action as action
 with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
 with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
 
