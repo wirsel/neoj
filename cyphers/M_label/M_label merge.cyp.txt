@@ -20,7 +20,7 @@ with cx, nLg, apoc.map.merge(cxn, {nLg: nLg }) as cxn
 with *, [
 	{enable:true,  t:"EDGES_preparation", mandatory:true},
  	{enable:false, t:"EDGES_delete", mandatory:false},  
- 	{enable:false,  t:"NODES_delete", mandatory:false},          
+ 	{enable:false, t:"NODES_delete", mandatory:false},          
  	{enable:true,  t:"NODES_merge", mandatory:false},  
  	{enable:true,  t:"EDGES_merge", mandatory:false, dependencies:["EDGES_preparation"]},    
  	{enable:true,  t:"EDGES_history", mandatory:false},
@@ -171,7 +171,11 @@ with nLg, apoc.map.merge( cx, {iteration:iteration }) as cx
 //cx.steps.<<step>.iterations := holds an optional list of cypher fragements that are used as <<iterator>> in <<apoc.periodic.iterate>>. Batch steps with these iterates will execute their action function by looping over the iteratos in the list defined here
 
 with *, {
-	EDGES_preparation:{ i:[cx.cypherIterate], a:'', items:['_']},
+	EDGES_preparation:{ 
+		i:[cx.cypherIterate], 
+		a:'with path as path, $cx as cx FOREACH (n IN relationships(path)| SET n += {status:cx.status.update, visitCnt:0} )', 
+		items:['_']
+		},
  	EDGES_delete:{ i:[], a:'', items: cx.edges_to_delete}, 
  	NODES_delete:{
 		i:[
@@ -222,7 +226,7 @@ with *, {root_type:cx.root.class, root_id_map:"{"+cx.root.pk.key+":\'"+cx.root.p
 with cx, nLg, apoc.map.setKey(lcx, 'replaces', replaces) as lcx
 
 //---action---
-with *,'with path as path, $cx as cx FOREACH (n IN relationships(path)| SET n += {status:cx.status.update, visitCnt:0} )' as action
+with *, lcx.s.action as action
 with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
 with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
 
@@ -490,8 +494,6 @@ with *, '
 	delete e
 	return node
 ' as action 
-
-
 with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
 with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
 
