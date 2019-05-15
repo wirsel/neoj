@@ -1,0 +1,29 @@
+//---------------------------------------------
+//----  EDGES_delete---
+//---------------------------------------------
+with *, cx.steps['EDGES_delete'] as s
+with cx, nLg, {s:s, lg_prop:'step_'+s.i+'_'+s.t} as lcx
+
+with *, '
+	with $cx as cx , $logger as logger
+	UNWIND lcx.s.items as item //EDGES_delete //UNWIND cx.edges_to_delete as edge_to_delete
+	With *, item as edge_to_delete
+	with *, cx.edges[edge_to_delete] as edge_map
+	with *, apoc.map.merge({out_id:\'\', in_id:\'\',params:\'{}\'},edge_map) as replaces
+	Set logger.step_1_0 = apoc.convert.toString(replaces)
+	with *, reduce(s=cx.edge_delete_template, x in keys(replaces) | replace(s,\'<<\'+x+\'>>\', replaces[x])) as cypher
+
+	CALL apoc.periodic.iterate(cypher, action,cx.iterate_options) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
+	with cx, nLg, apoc.map.setKey(lcx,\'res_map\', {batches:batches, total:total,  timeTaken: timeTaken,  committedOperations: committedOperations,  failedOperations: failedOperations,  failedBatches: failedBatches,  retries: retries,  errorMessages: errorMessages,  batch: batch,  operations: operations,  wasTerminated:wasTerminated } ) as lcx
+
+	Set logger.step_1_edge_delete= apoc.convert.toString({batches:batches,total:total, timeTaken: timeTaken, committedOperations: committedOperations, failedOperations: failedOperations, failedBatches: failedBatches, retries:retries, errorMessages:errorMessages})
+	with COLLECT(edge_to_delete) as coll
+	return size(coll) as cnt
+' as action
+with cx, nLg, lcx, reduce(s=action, x in keys(lcx.replaces) | replace(s,'<<'+x+'>>', lcx.replaces[x])) as action
+with cx, nLg, apoc.map.setKey(lcx,'action', CASE WHEN lcx.s.enable=true THEN action ELSE 'return 0' END ) as lcx
+
+////with cx, nLg, lcx, '' as value 
+CALL apoc.do.when( size(cx.edges_to_delete)>0, lcx.action,"",{cx:cx, logger: nLg}) yield value 
+CALL apoc.create.setProperty(nLg,'step_'+lcx.s.i+'_'+lcx.s.t+'_'+'_action',coalesce(lcx.action,'null')) yield node as node3
+with cx, nLg, COLLECT(value) as values
