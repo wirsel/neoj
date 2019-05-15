@@ -339,7 +339,7 @@ with cx, nLg, {s:s, lg_prop:'step_'+s.i+'_'+s.t} as lcx
 
 CALL apoc.do.when(size(lcx.s.items)=0,'CALL apoc.create.setProperty($nLg, $lcx.lg_prop+\'_WARNING = no items for processing found','', {nLg:nLg, lcx:lcx}) yield value
 UNWIND lcx.s.items as item //EDGES_preparation
-with cx, nLg, apoc.map.setKey(lcx, 'item', item) as lcx
+with cx, nLg, apoc.map.setKey(lcx,'item', item) as lcx
 
 //---replaces--- 
 CALL apoc.do.when(true, lcx.s.replaces, '',{cx:cx, item:lcx.item}) yield value as replaces //EDGES_preparation
@@ -357,7 +357,7 @@ with *, reduce(s=lcx.s.iterations[lcx.index], x in keys(lcx.replaces) | replace(
 with cx, nLg, apoc.map.setKey(lcx, 'iteration',iteration) as lcx
 with cx, nLg, apoc.map.setKey(lcx, 'prop', 'step_'+lcx.s.i+'_'+lcx.s.t+'_'+lcx.item+'_'+toString(lcx.index)) as lcx
 
-Call apoc.periodic.iterate(lcx.iteration,lcx.action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{cx:cx }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
+Call apoc.periodic.iterate(lcx.iteration,lcx.action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:coalesce(nLg.name,'null'), cx:cx, nLg:nLg}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
 ////with *, {} as res_map ////
 with cx, nLg, apoc.map.setKey(lcx,'res_map', {batches:batches, total:total,  timeTaken: timeTaken,  committedOperations: committedOperations,  failedOperations: failedOperations,  failedBatches: failedBatches,  retries: retries,  errorMessages: errorMessages,  batch: batch,  operations: operations,  wasTerminated:wasTerminated } ) as lcx
 
@@ -418,7 +418,11 @@ with cx, nLg, {s:s, lg_prop:'step_'+s.i+'_'+s.t} as lcx
 
 CALL apoc.do.when(size(lcx.s.items)=0,'CALL apoc.create.setProperty($nLg, $lcx.lg_prop+\'_WARNING = no items for processing found','', {nLg:nLg, lcx:lcx}) yield value
 UNWIND lcx.s.items as item //NODES_delete
-with cx, nLg, apoc.map.merge(lcx, {item:item, replaces:{}}) as lcx
+with cx, nLg, apoc.map.setKey(lcx,'item', item) as lcx
+
+//---replaces---
+CALL apoc.do.when(true, lcx.s.replaces, '',{cx:cx, item:lcx.item}) yield value as replaces //NODES_delete
+with cx, nLg, apoc.map.setKey(lcx,'replaces', replaces.map) as lcx
 
 //---action---
 with *, lcx.s.action as action
@@ -432,7 +436,7 @@ with *, reduce(s=lcx.s.iterations[lcx.index], x in keys(lcx.replaces) | replace(
 with cx, nLg, apoc.map.setKey(lcx, 'iteration',iteration) as lcx
 with cx, nLg, apoc.map.setKey(lcx, 'prop', 'step_'+lcx.s.i+'_'+lcx.s.t+'_'+lcx.item+'_'+toString(lcx.index)) as lcx
 
-Call apoc.periodic.iterate(lcx.iteration,lcx.action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:coalesce(nLg.name,'null'), cx:cx}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
+Call apoc.periodic.iterate(lcx.iteration,lcx.action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:coalesce(nLg.name,'null'), cx:cx, nLg:nLg}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
 ////with *, {} as res_map ////
 with cx, nLg, apoc.map.setKey(lcx,'res_map', {batches:batches, total:total,  timeTaken: timeTaken,  committedOperations: committedOperations,  failedOperations: failedOperations,  failedBatches: failedBatches,  retries: retries,  errorMessages: errorMessages,  batch: batch,  operations: operations,  wasTerminated:wasTerminated } ) as lcx
  
@@ -464,7 +468,7 @@ with cx, nLg, {s:s, lg_prop:'step_'+s.i+'_'+s.t} as lcx
 
 CALL apoc.do.when(size(lcx.s.items)=0,'CALL apoc.create.setProperty($nLg, $lcx.lg_prop+\'_WARNING = no items for processing found','', {nLg:nLg, lcx:lcx}) yield value
 UNWIND lcx.s.items as item //NODES_merge //UNWIND keys(cx.node_id_maps) as node_type
-with cx, nLg, apoc.map.setKey(lcx, 'item', item) as lcx
+with cx, nLg, apoc.map.setKey(lcx,'item', item) as lcx
 
 //---replaces---
 CALL apoc.do.when(true, lcx.s.replaces, '',{cx:cx, item:lcx.item}) yield value as replaces //NODES_merge
@@ -482,7 +486,7 @@ with *, reduce(s=lcx.s.iterations[lcx.index], x in keys(lcx.replaces) | replace(
 with cx, nLg, apoc.map.setKey(lcx, 'iteration',iteration) as lcx
 with cx, nLg, apoc.map.setKey(lcx, 'prop', 'step_'+lcx.s.i+'_'+lcx.s.t+'_'+lcx.item+'_'+toString(lcx.index)) as lcx
 
-Call apoc.periodic.iterate(lcx.iteration,lcx.action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ cx: cx, dt:coalesce(nLg.name,'null') }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
+Call apoc.periodic.iterate(lcx.iteration,lcx.action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:coalesce(nLg.name,'null'), cx:cx, nLg:nLg}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
 ////with *, {} as res_map ////
 with cx, nLg, apoc.map.setKey(lcx,'res_map', {batches:batches, total:total,  timeTaken: timeTaken,  committedOperations: committedOperations,  failedOperations: failedOperations,  failedBatches: failedBatches,  retries: retries,  errorMessages: errorMessages,  batch: batch,  operations: operations,  wasTerminated:wasTerminated } ) as lcx
   
@@ -518,20 +522,6 @@ with cx, nLg, apoc.map.setKey(lcx,'item', item) as lcx
 //---replaces---
 CALL apoc.do.when(true, lcx.s.replaces, '',{cx:cx, item:lcx.item}) yield value as replaces //EDGES_merge
 with cx, nLg, apoc.map.setKey(lcx,'replaces', replaces.map) as lcx
-
-
-//with cx, nLg,  apoc.map.setKey(lcx,'item',item) as lcx
-//with cx, nLg,  apoc.map.merge(lcx, {edge_map:cx.edges[lcx.item], edge_id_map:cx.edge_id_maps[lcx.item]} ) as lcx
-//with cx, nLg,  apoc.map.setKey(lcx, 'replaces', {
-//	out_id_cyp: lcx.edge_id_map.out, 
-//    type_out: lcx.edge_map.out, 
-//    edge_type: lcx.edge_map.type, 
-//    type_in: lcx.edge_map.in, 
-//    in_id_cyp: lcx.edge_id_map.in, 
-//	on_create_set: '{visitCnt:1, index:item_map.index, status:cx.status.new, createdAt:datetime(), batchCreatedAt:dt}',
-//	on_match_set: '{status:cx.status.actual}',
-//    items:lcx.edge_id_map.input_items
-//})  as lcx
 
 //---action---
 with *, lcx.s.action as action
@@ -573,7 +563,6 @@ with cx, nLg, COLLECT(lcx.item) as coll //EDGES_merge
 //---------------------------------------------
 with *, cx.steps['EDGES_history'] as s
 with cx, nLg, {s:s, lg_prop:'step_'+s.i+'_'+s.t} as lcx
-//with cx, nLg, apoc.map.setKey(lcx, 'replaces', {HISTORY:'"_HISTORY"'}) as lcx
 
 CALL apoc.do.when(size(lcx.s.items)=0,'CALL apoc.create.setProperty($nLg, $lcx.lg_prop+\'_WARNING = no items for processing found','', {nLg:nLg, lcx:lcx}) yield value
 UNWIND lcx.s.items as item //EDGES_history
@@ -595,7 +584,7 @@ with *, reduce(s=lcx.s.iterations[lcx.index], x in keys(lcx.replaces) | replace(
 with cx, nLg, apoc.map.setKey(lcx, 'iteration',iteration) as lcx
 with cx, nLg, apoc.map.setKey(lcx, 'prop', 'step_'+lcx.s.i+'_'+lcx.s.t+'_'+lcx.item+'_'+toString(lcx.index)) as lcx
 
-Call apoc.periodic.iterate(lcx.iteration,lcx.action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ nLg:nLg, cx: cx}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
+Call apoc.periodic.iterate(lcx.iteration,lcx.action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:coalesce(nLg.name,'null'), cx:cx, nLg:nLg}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated 
 ////with *, {} as res_map ////
 with cx, nLg, apoc.map.setKey(lcx,'res_map', {batches:batches, total:total,  timeTaken: timeTaken,  committedOperations: committedOperations,  failedOperations: failedOperations,  failedBatches: failedBatches,  retries: retries,  errorMessages: errorMessages,  batch: batch,  operations: operations,  wasTerminated:wasTerminated } ) as lcx
 
@@ -645,7 +634,7 @@ with *, reduce(s=lcx.s.iterations[lcx.index], x in keys(lcx.replaces) | replace(
 with cx, nLg, apoc.map.setKey(lcx, 'iteration',iteration) as lcx
 with cx, nLg, apoc.map.setKey(lcx, 'prop', 'step_'+lcx.s.i+'_'+lcx.s.t+'_'+lcx.item+'_'+toString(lcx.index)) as lcx
 
-Call apoc.periodic.iterate(lcx.iteration,lcx.action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ cx: cx }}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated  
+Call apoc.periodic.iterate(lcx.iteration,lcx.action,{batchSize:1000, parallel:false,retries:0, iterateList:false, concurrency:0, failedParams:-1, params:{ dt:coalesce(nLg.name,'null'), cx:cx, nLg:nLg}}) YIELD batches,total, timeTaken, committedOperations, failedOperations, failedBatches, retries, errorMessages, batch, operations, wasTerminated  
 ////with *, {} as res_map ////
 with cx, nLg, apoc.map.setKey(lcx,'res_map', {batches:batches, total:total,  timeTaken: timeTaken,  committedOperations: committedOperations,  failedOperations: failedOperations,  failedBatches: failedBatches,  retries: retries,  errorMessages: errorMessages,  batch: batch,  operations: operations,  wasTerminated:wasTerminated } ) as lcx
 
