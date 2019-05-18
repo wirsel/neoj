@@ -28,7 +28,7 @@ with *, [
 ] as step_listz
 with *, [
 	{enable:true,  t:"EDGES_preparation", mandatory:true}
- 	,{enable:false, t:"NODES_delete", mandatory:false}         
+ 	,{enable:true, t:"NODES_delete", mandatory:false}         
  	,{enable:true,  t:"NODES_merge", mandatory:false} 
  	,{enable:true,  t:"EDGES_merge_from_input", mandatory:false, dependencies:["EDGES_preparation"]}   
   	,{enable:true,  t:"EDGES_merge_sibbling", mandatory:false}    
@@ -192,14 +192,24 @@ with nLg, cx, {
         in_class: cx.edges["NEXT_MONTH"].in,
         input_items:'cx.input_maps',
     	out: cx.node_id_maps[cx.edges["NEXT_MONTH"].out].id,
-        in: cx.node_id_maps[cx.edges["NEXT_MONTH"].in].id
+        in: cx.node_id_maps[cx.edges["NEXT_MONTH"].in].id,
+        nextSibblingId:'
+            with *, tointeger( left(this.identifier,4)) as thisYear
+            with *, tointeger( substring(this.identifier,4,2)) as thisMonth
+            with *, CASE WHEN thisMonth=12 THEN tostring(thisYear+1) ELSE tostring(thisYear) END as nextYear
+            with *, apoc.text.lpad(CASE WHEN thisMonth=12 THEN tostring(1) ELSE tostring(thisMonth+1) END,2,"0") as nextMonth   
+            with *, nextYear+nextMonth+"00" as nextSibblingId'      
     },
 	NEXT_YEAR:{
     	out_class: cx.edges["NEXT_YEAR"].out,
         in_class: cx.edges["NEXT_YEAR"].in,
         input_items:'cx.input_maps',
     	out: cx.node_id_maps[cx.edges["NEXT_YEAR"].out].id,
-        in: cx.node_id_maps[cx.edges["NEXT_YEAR"].in].id
+        in: cx.node_id_maps[cx.edges["NEXT_YEAR"].in].id,
+        nextSibblingId:'
+            with *, tointeger( left(this.identifier,4)) as thisYear
+            with *, tostring(thisYear+1) as nextYear
+            with *, nextYear+"0000" as nextSibblingId'         
     }     
     
 } as edge_id_maps
@@ -375,26 +385,23 @@ with *, {
 			where not id_this is null 
 			with *
 			MATCH(this:<<type>> {identifier:id_this})
-            with *, tointeger( left(this.identifier,4)) as thisYear
-            with *, tointeger( substring(this.identifier,4,2)) as thisMonth
-            with *, CASE WHEN thisMonth=12 THEN tostring(thisYear+1) ELSE tostring(thisYear) END as nextYear
-            with *, apoc.text.lpad(CASE WHEN thisMonth=12 THEN tostring(1) ELSE tostring(thisMonth+1) END,2,"0") as nextMonth   
-            with *, nextYear+nextMonth+"00" as nextSibblingId
+            <<nextSibblingId>>
             set this.next_sibbling_id = nextSibblingId
-            with *
+            with *               
 			MATCH(next:<<type>> {identifier:nextSibblingId}) 
             MERGE(this)-[e:<<edge_type>>]->(next)
             return this',
- 		items: ['NEXT_MONTH'],
+ 		items: ['NEXT_MONTH','NEXT_YEAR'],
  		replaces:'
 			with $cx as cx, $item as item
 			with *, cx.edges[item] as edge_map
-			with *, cx.edge_id_maps[item] as edge_id_map      
+			with *, cx.edge_id_maps[item] as edge_id_map    
 			with *, {
  				this_id_cyp: edge_id_map.out, 
 	 			type: edge_map.out, 
  				edge_type: edge_map.type,            
-        		items:edge_id_map.input_items
+        		items:edge_id_map.input_items,
+                nextSibblingId:edge_id_map.nextSibblingId
         	} as map return map',
  		Xreplaces:'
 			with $cx as cx, $item as item
