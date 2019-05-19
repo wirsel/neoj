@@ -28,7 +28,7 @@ with *, [
 ] as step_listz
 with *, [
 	{enable:true,  t:"EDGES_preparation", mandatory:true}
- 	,{enable:true, t:"NODES_delete", mandatory:false, whitelist:['C_location_city']}         
+ 	,{enable:false, t:"NODES_delete", mandatory:false, whitelist:['C_location_city']}         
  	,{enable:true,  t:"NODES_merge", mandatory:false} 
  	,{enable:true,  t:"EDGES_merge_from_input", mandatory:false, dependencies:["EDGES_preparation"]}   
   	,{enable:true,  t:"EDGES_merge_sibbling", mandatory:false}    
@@ -93,7 +93,7 @@ with nLg, cx, {
         on_create_set:'{type:type, name:n.identifier, batchtime:dt, createdAt:datetime(), status:cx.status.new}', 
         on_match_set:'{status:cx.status.actual}', 
         input_items:'cx.input_maps', 
-        must_have_edge: ''.
+        must_have_edge: '',
         sequence_level:3        
 	},
     C_yyyymm00:{
@@ -187,8 +187,27 @@ with nLg, cx, {
     
 }
 as edges
-
 with nLg, apoc.map.merge(cx, {edges: edges}) as cx
+
+//--- generate <<sequence>> paramater from sequence_level and sequence_direction in <<edges>> and <<node_id_maps>--
+with *,  apoc.coll.sort(apoc.coll.toSet([key in keys(cx.edges)| cx.edges[key].sequence_level])) as seq_levels_edges
+//assures that the sequence starts with 0 and continous with 1,2,3,4...
+where size(seq_levels_edges)-1=apoc.coll.max(seq_levels_edges) and seq_levels_edges[0]=0 
+with  *,  [level in seq_levels_edges| filter(type in keys(cx.edges) where cx.edges[type].sequence_level=tointeger(level))] as bufferEdges
+with *,  [x in bufferEdges | reduce(arr=[], y in x | arr+[y+cx.edges[y].sequence_direction])] as sequence_edges
+
+with *,  apoc.coll.sort(apoc.coll.toSet([key in keys(cx.node_id_maps)| cx.node_id_maps[key].sequence_level])) as seq_levels_nodes
+//assures that the sequence starts with 0 and continous with 1,2,3,4...
+where size(seq_levels_nodes)-1=apoc.coll.max(seq_levels_nodes) and seq_levels_nodes[0]=0 
+with  *,  [level in seq_levels_nodes| filter(type in keys(cx.node_id_maps) where cx.node_id_maps[type].sequence_level=tointeger(level))] as sequence_nodes
+with *, 'C_aws_bill_report,HAS_COST>|HAS_COST_HISTORY>,C_aws_bill_cost' as seq
+
+where size(sequence_nodes)=size(sequence_edges)
+
+with *, apoc.text.join([i in range(0, size(sequence_nodes)-1) | apoc.text.join(sequence_nodes[i],"|")+","+ apoc.text.join(sequence_edges[i],"|")],", ")  as buffer
+with nLg, apoc.map.setKey(cx, "sequence",buffer) as cx
+
+
 with nLg, apoc.map.setKey(cx, 'out_type_in_list', [type in keys(cx.edges) | cx.edges[type].out +">"+type+">" +cx.edges[type].in]) as cx
 with nLg, cx, { 
 	HAS_COST:{
@@ -253,7 +272,6 @@ with nLg, cx, {
     
 } as edge_id_maps
 with nLg, apoc.map.merge(cx, {edge_id_maps: edge_id_maps}) as cx
-
 
 
 //cx.edges_to_delete := here you can define which type of edges  should be deleted before the batch job runs.Remark, adding edge types to this list does not automaticclay enforce deleting. The deletion process step must be enabled under section <<cx.steps>>/
@@ -333,8 +351,7 @@ with *, {
  	NODES_delete:{
 		iterations:[
         	'match(root:'+cx.root.class+' {'+cx.root.pk.key+':\''+cx.root.pk.value+'\'}) 
-            with root, \'C_aws_bill_report,HAS_COST>|HAS_COST_HISTORY>,C_aws_bill_cost\' as seq
-            CALL apoc.path.subgraphNodes( root,{maxlevel:0,sequence:seq}) yield node return node as node'     
+            CALL apoc.path.subgraphNodes( root,{maxlevel:0,sequence:"'+cx.sequence+'"}) yield node return node as node'     
         ],
         action:'
 			with node as n, $cx as cx, $dt as dt
