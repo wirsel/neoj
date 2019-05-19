@@ -28,7 +28,7 @@ with *, [
 ] as step_listz
 with *, [
 	{enable:true,  t:"EDGES_preparation", mandatory:true}
- 	,{enable:true, t:"NODES_delete", mandatory:false}         
+ 	,{enable:true, t:"NODES_delete", mandatory:false, whitelist:['C_location_city']}         
  	,{enable:true,  t:"NODES_merge", mandatory:false} 
  	,{enable:true,  t:"EDGES_merge_from_input", mandatory:false, dependencies:["EDGES_preparation"]}   
   	,{enable:true,  t:"EDGES_merge_sibbling", mandatory:false}    
@@ -69,35 +69,48 @@ with nLg, cx, {
         on_create_set:'{name:n.identifier, type:type, batchtime:dt, createdAt:datetime(), status:cx.status.new}',
         on_match_set:'{status:cx.status.actual}',
         input_items:'cx.root_id_list',
-        must_have_edge: 'HAS_COST'
+        must_have_edge: 'HAS_COST',
+        sequence_level:0
 	},
     C_aws_bill_cost:{
     	id:'item_map.this.month+\'/\'+item_map.this.region', 
         on_create_set:'{type:type, cost:item_map.this.cost, name:n.identifier, batchtime:dt, createdAt:datetime(), status:cx.status.new}', 
         on_match_set:'{status:cx.status.actual}', 
         input_items:'cx.input_maps', 
-        must_have_edge: 'HAS_COST'
+        must_have_edge: 'HAS_COST',
+        sequence_level:1
 	},
     C_aws_bill_region:{
     	id:'item_map.this.region', 
         on_create_set:'{type:type, name:n.identifier, batchtime:dt, createdAt:datetime(), status:cx.status.new}', 
         on_match_set:'{status:cx.status.actual}', 
         input_items:'cx.input_maps', 
-        must_have_edge: ''
+        must_have_edge: '',
+        sequence_level:2        
+	},
+    C_aws_region_city:{
+      	id:'split(split(item_map.this.region,"(")[1],")")[0]', 
+        on_create_set:'{type:type, name:n.identifier, batchtime:dt, createdAt:datetime(), status:cx.status.new}', 
+        on_match_set:'{status:cx.status.actual}', 
+        input_items:'cx.input_maps', 
+        must_have_edge: ''.
+        sequence_level:3        
 	},
     C_yyyymm00:{
     	id:'item_map.this.month', 
         on_create_set:'{type:type, name:n.identifier, batchtime:dt, createdAt:datetime(), status:cx.status.new}', 
         on_match_set:'{status:cx.status.actual}', 
         input_items:'cx.input_maps', 
-        must_have_edge: 'HAS_MONTH' //?
+        must_have_edge: 'HAS_MONTH',
+        sequence_level:2          
 	},
     C_yyyy0000:{
     	id:'left(item_map.this.month,4) +\'0000\'', 
         on_create_set:'{type:type, name:n.identifier, batchtime:dt, createdAt:datetime(), status:cx.status.new}', 
         on_match_set:'{status:cx.status.actual}', 
         input_items:'cx.input_maps', 
-        must_have_edge: '' //?
+        must_have_edge: '' ,
+        sequence_level:3          
 	}    
 } as node_id_maps
 with nLg, apoc.map.merge(cx, {node_id_maps: node_id_maps}) as cx
@@ -125,32 +138,51 @@ with nLg, cx, {
 	HAS_COST:{
     	out:'C_aws_bill_report' , 
         type:'HAS_COST', 
-        in:'C_aws_bill_cost'
+        in:'C_aws_bill_cost',
+        sequence_level:0,
+        sequence_direction:'>'          
 	},
 	IN_REGION:{
     	out:'C_aws_bill_cost' , 
         type:'IN_REGION', 
-        in:'C_aws_bill_region'
+        in:'C_aws_bill_region',
+        sequence_level:1,
+        sequence_direction:'>'           
     },
+	LOCATED_IN_CITY:{
+    	out:'C_aws_bill_region' , 
+        type:'LOCATED_IN_CITY', 
+        in:'C_aws_region_city',
+        sequence_level:2,
+        sequence_direction:'>'           
+    },    
 	IN_MONTH:{
     	out:'C_aws_bill_cost' , 
         type:'IN_MONTH', 
-        in:'C_yyyymm00'
+        in:'C_yyyymm00',
+        sequence_level:1,
+        sequence_direction:'>' 
     },
 	HAS_MONTH:{
     	out:'C_yyyy0000' , 
         type:'HAS_MONTH', 
-        in:'C_yyyymm00'
+        in:'C_yyyymm00',
+        sequence_level:2,
+        sequence_direction:'<' 
     },
 	NEXT_MONTH:{
     	out:'C_yyyymm00' , 
         type:'NEXT_MONTH', 
-        in:'C_yyyymm00'
+        in:'C_yyyymm00',
+        sequence_level:2,        
+        sequence_direction:'' 
     },
 	NEXT_YEAR:{
     	out:'C_yyyy0000' , 
         type:'NEXT_YEAR', 
-        in:'C_yyyy0000'
+        in:'C_yyyy0000',
+        sequence_level:3,  
+		sequence_direction:'' 
     }
     
 }
@@ -173,6 +205,13 @@ with nLg, cx, {
     	out: cx.node_id_maps[cx.edges["IN_REGION"].out].id,
         in: cx.node_id_maps[cx.edges["IN_REGION"].in].id
     },
+	LOCATED_IN_CITY:{
+    	out_class: cx.edges["LOCATED_IN_CITY"].out,
+        in_class: cx.edges["LOCATED_IN_CITY"].in,
+        input_items:'cx.input_maps',
+    	out: cx.node_id_maps[cx.edges["LOCATED_IN_CITY"].out].id,
+        in: cx.node_id_maps[cx.edges["LOCATED_IN_CITY"].in].id
+    },    
 	IN_MONTH:{
     	out_class: cx.edges["IN_MONTH"].out,
         in_class: cx.edges["IN_MONTH"].in,
@@ -312,6 +351,7 @@ with *, {
  		action:'
 			with item_map as item_map, \'<<type>>\' as type, $cx as cx, $dt as dt
 			with *, <<id>> as id
+            where not id is null
 			with *, <<identprops>> as identprops
 			MERGE(<<var>>:<<type>> <<identprops>>)
 			on create set <<var>> += <<on_create_set>>
@@ -353,7 +393,7 @@ with *, {
     		with *, CASE WHEN e.visitCnt=1 THEN cx.status.new ELSE e.status END as status
     		Set e.status=status
     	', 
- 		items: ['HAS_COST','IN_REGION','IN_MONTH','HAS_MONTH'],
+ 		items: ['HAS_COST','IN_REGION','IN_MONTH','HAS_MONTH','LOCATED_IN_CITY'],
  		replaces:'
 			with $cx as cx, $item as item
 			with *, cx.edges[item] as edge_map
