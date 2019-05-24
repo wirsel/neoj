@@ -78,8 +78,10 @@ with nLg, cx, {
         	name:n.identifier, 
         	batchtime:dt, 
         	createdAt:datetime(), 
-        	status:cx.status.new}', 
-        on_match_set:'{status:cx.status.actual}', 
+        	status:cx.status.new,
+        	role:replace(split(item_map.this["Attachment Information"],":")[1]," (attached)","")}', 
+        on_match_set:'{status:cx.status.actual,
+        	role:replace(split(item_map.this["Attachment Information"],":")[1]," (attached)","") }', 
         input_items:'cx.input_maps', 
         must_have_edge: 'PART_OF',
         sequence_level:1
@@ -92,7 +94,9 @@ with nLg, cx, {
         	batchtime:dt, 
         	createdAt:datetime(), 
         	status:cx.status.new}', 
-        on_match_set:'{status:cx.status.actual}', 
+        on_match_set:'{
+        	status:cx.status.actual
+        	}', 
         input_items:'cx.input_maps', 
         must_have_edge: 'ATTACHED_TO',
         sequence_level:1
