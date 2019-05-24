@@ -53,7 +53,7 @@ with nLg, apoc.map.merge(cx,
 {
    	root: {
 		class:'C_import', 
-       	pk:{ key:'identifier', value:'aws ec2 snapshots'}
+       	pk:{ key:'identifier', value:'aws ec2 volumes'}
     }
 }) as cx
 
@@ -71,24 +71,10 @@ with nLg, cx, {
         must_have_edge: 'HAS_COST',
         sequence_level:0
 	},
-    C_aws_ec2_snapshot:{
-    	id:'item_map.this["Snapshot_ID"]', 
+    C_aws_ec2_volume:{
+    	id:'item_map.this["Volume ID"]', 
         on_create_set:'{
         	type:type, 
-        	environment:item_map.this.Environment, 
-        	Description:item_map.this.Description, 
-        	aws_dlm_lifecycle_schedule_name:item_map.this["aws:dlm:lifecycle-schedule-name"],
-        	`aws:dlm:lifecycle-policy-id`:item_map.this["aws:dlm:lifecycle-policy-id"],
-        	size: tointeger(replace(coalesce(item_map.this.size,"0")," GiB", "")    	),
-        	status:item_map.this.status,
-        	startet:item_map.this.startet,
-        	progress:item_map.this.Progress,
-        	volume:item_map.this.Volume,
-        	owner:item_map.this.Owner,
-        	owner_alias:item_map.this["Owner Alias"],
-        	encryption:item_map.this["Encryption"],
-        	kms_key_id:item_map.this["KMS Key ID"],
-        	kms_key_aliases:item_map.this["KMS Key Aliases"],
         	name:n.identifier, 
         	batchtime:dt, 
         	createdAt:datetime(), 
@@ -98,8 +84,8 @@ with nLg, cx, {
         must_have_edge: 'PART_OF',
         sequence_level:1
 	},
-    C_aws_ec2_volume:{
-    	id:'item_map.this["Volume"]', 
+    C_aws_ec2_instance:{
+    	id:'split(item_map.this["Attachment Information"]," (")[0]', 
         on_create_set:'{
         	type:type, 
         	name:n.identifier, 
@@ -108,7 +94,7 @@ with nLg, cx, {
         	status:cx.status.new}', 
         on_match_set:'{status:cx.status.actual}', 
         input_items:'cx.input_maps', 
-        must_have_edge: 'FOR_VOLUME',
+        must_have_edge: 'ATTACHED_TO',
         sequence_level:1
 	}  
 } as node_id_maps
@@ -119,7 +105,7 @@ with nLg, cx, [keys(cx.node_id_maps)] as nodes
 with nLg, apoc.map.merge(cx, {nodes: nodes}) as cx
 
 //cx.nodes_to_delete := here you can define which class of nodes should be deleted before the batch job runs.Remark, adding class labels to this list does not automaticclay enforce deleting. The deletion process step must be enabled under section <<cx.steps>>
-with nLg, cx, ['C_aws_ec2_snapshot'] as nodes_to_delete
+with nLg, cx, [] as nodes_to_delete
 with nLg, apoc.map.merge(cx, {nodes_to_delete:nodes_to_delete}) as cx
 //with cxn, nLg, apoc.map.merge( cx ,{identifier: "schema"} ) as cx  
 
@@ -135,16 +121,16 @@ with nLg, apoc.map.merge(cx, {nodes_to_delete:nodes_to_delete}) as cx
 
 with nLg, cx, {
 	PART_OF:{
-    	out:'C_aws_ec2_snapshot' , 
+    	out:'C_aws_ec2_volume' , 
         type:'PART_OF', 
         in:'C_import',
         sequence_level:0,
         sequence_direction:'<'          
 	},
-	FOR_VOLUME:{
-    	out:'C_aws_ec2_snapshot' , 
-        type:'FOR_VOLUME', 
-        in:'C_aws_ec2_volume',
+	ATTACHED_TO:{
+    	out:'C_aws_ec2_volume' , 
+        type:'ATTACHED_TO', 
+        in:'C_aws_ec2_instance',
         sequence_level:1,
         sequence_direction:'>'          
 	}    
@@ -189,12 +175,12 @@ with nLg, cx, {
     	out: cx.node_id_maps[cx.edges["PART_OF"].out].id,
         in: cx.node_id_maps[cx.edges["PART_OF"].in].id
     },
-	FOR_VOLUME:{
-    	out_class: cx.edges["FOR_VOLUME"].out,
-        in_class: cx.edges["FOR_VOLUME"].in,
+	ATTACHED_TO:{
+    	out_class: cx.edges["ATTACHED_TO"].out,
+        in_class: cx.edges["ATTACHED_TO"].in,
         input_items:'cx.input_maps', 
-    	out: cx.node_id_maps[cx.edges["FOR_VOLUME"].out].id,
-        in: cx.node_id_maps[cx.edges["FOR_VOLUME"].in].id
+    	out: cx.node_id_maps[cx.edges["ATTACHED_TO"].out].id,
+        in: cx.node_id_maps[cx.edges["ATTACHED_TO"].in].id
     }    
 } as edge_id_maps
 with nLg, apoc.map.merge(cx, {edge_id_maps: edge_id_maps}) as cx
@@ -212,7 +198,7 @@ with nLg, cx, '
 	With $cx as cx
     with *, 
     	\'PART_OF\' as edges, 
-        \'+C_aws_ec2_snapshot\' as labels,
+        \'+C_aws_ec2_instance\' as labels,
         1 as limit
     MATCH(r:<<root_type>> <<root_id_map>>) 
     
@@ -336,7 +322,7 @@ with *, {
     		with *, CASE WHEN e.visitCnt=1 THEN cx.status.new ELSE e.status END as status
     		Set e.status=status
     	', 
- 		items: ['PART_OF','FOR_VOLUME'],
+ 		items: ['PART_OF','ATTACHED_TO'],
  		replaces:'
 			with $cx as cx, $item as item
 			with *, cx.edges[item] as edge_map
@@ -466,10 +452,10 @@ with *
 //CALL apoc.schema.nodes() yield name, label, properties, status, type 
 //with nLg, cx, { name:name,  label: label,  properties: properties,  status: status,  type:type} as item
 //with nLg, cx, 
-LOAD CSV WITH HEADERS FROM 'file:///w:/20190520_aws_overview_snapshots.csv' AS rawitem FIELDTERMINATOR '|'
+LOAD CSV WITH HEADERS FROM 'file:///w:/20190524_aws_overview_volumes.csv' AS rawitem FIELDTERMINATOR '|'
 with nLg, cx, COLLECT(rawitem) as input_maps
 with nLg, apoc.map.merge( cx, {input_maps:input_maps }) as cx
-with nLg, apoc.map.merge( cx, {root_id_list:["aws ec2 snapshots"]}) as cx
+with nLg, apoc.map.merge( cx, {root_id_list:["aws ec2 volumes"]}) as cx
 
 //---------------------------------------------
 //----Process steps-----
