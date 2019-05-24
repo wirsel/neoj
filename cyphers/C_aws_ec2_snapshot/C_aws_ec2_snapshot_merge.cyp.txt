@@ -28,11 +28,10 @@ with *, [
 ] as step_listz
 with *, [
 	{enable:true,  t:"EDGES_preparation", mandatory:true}
- 	,{enable:false, t:"NODES_delete", mandatory:false, whitelist:['C_location_city']}         
+ 	,{enable:true, t:"NODES_delete", mandatory:false, whitelist:['C_location_city']}         
  	,{enable:true,  t:"NODES_merge", mandatory:false} 
  	,{enable:true,  t:"EDGES_merge_from_input", mandatory:false, dependencies:["EDGES_preparation"]}   
-  	,{enable:true,  t:"EDGES_merge_sibbling", mandatory:false}    
-    
+ // 	,{enable:true,  t:"EDGES_merge_sibbling", mandatory:false}     
 // 	,{enable:false,  t:"EDGES_history", mandatory:false}
 // 	,{enable:false,  t:"NODES_history", mandatory:false}
 ] as step_list
@@ -53,8 +52,8 @@ Set nLg.steps_maps=apoc.convert.toString(cx.steps_maps) with *
 with nLg, apoc.map.merge(cx, 
 {
    	root: {
-		class:'C_aws_bill_report', 
-       	pk:{ key:'identifier', value:'overview'}
+		class:'C_import', 
+       	pk:{ key:'identifier', value:'aws ec2 snapshots'}
     }
 }) as cx
 
@@ -64,7 +63,7 @@ with nLg, apoc.map.merge(cx,
 //cx.node_id_map.<class label>>.on_match_set := holds the the cypher fragment that is executed when nodes of this calls are matched with MERGE
 //cx.node_id_map.<class label>>.must_have_edge := holds the the <<edge_type>> that must exists for th enode. If no edge exists the node is not in use anymore. Instead of deleting the node,  the <<status>> attribute will be set to <<cx.status.history>>.
 with nLg, cx, { 
-	C_aws_bill_report:{
+	C_import:{
     	id:'cx.root.pk.value',
         on_create_set:'{name:n.identifier, type:type, batchtime:dt, createdAt:datetime(), status:cx.status.new}',
         on_match_set:'{status:cx.status.actual}',
@@ -72,46 +71,46 @@ with nLg, cx, {
         must_have_edge: 'HAS_COST',
         sequence_level:0
 	},
-    C_aws_bill_cost:{
-    	id:'item_map.this.month+\'/\'+item_map.this.region', 
-        on_create_set:'{type:type, cost:item_map.this.cost, name:n.identifier, batchtime:dt, createdAt:datetime(), status:cx.status.new}', 
+    C_aws_ec2_snapshot:{
+    	id:'item_map.this["Snapshot_ID"]', 
+        on_create_set:'{
+        	type:type, 
+        	environment:item_map.this.Environment, 
+        	Description:item_map.this.Description, 
+        	aws_dlm_lifecycle_schedule_name:item_map.this["aws:dlm:lifecycle-schedule-name"],
+        	`aws:dlm:lifecycle-policy-id`:item_map.this["aws:dlm:lifecycle-policy-id"],
+        	size: tointeger(replace(coalesce(item_map.this.size,"0")," GiB", "")    	),
+        	status:item_map.this.status,
+        	startet:item_map.this.startet,
+        	progress:item_map.this.Progress,
+        	volume:item_map.this.Volume,
+        	owner:item_map.this.Owner,
+        	owner_alias:item_map.this["Owner Alias"],
+        	encryption:item_map.this["Encryption"],
+        	kms_key_id:item_map.this["KMS Key ID"],
+        	kms_key_aliases:item_map.this["KMS Key Aliases"],
+        	name:n.identifier, 
+        	batchtime:dt, 
+        	createdAt:datetime(), 
+        	status:cx.status.new}', 
         on_match_set:'{status:cx.status.actual}', 
         input_items:'cx.input_maps', 
-        must_have_edge: 'HAS_COST',
+        must_have_edge: 'PART_OF',
         sequence_level:1
 	},
-    C_aws_bill_region:{
-    	id:'item_map.this.region', 
-        on_create_set:'{type:type, name:n.identifier, batchtime:dt, createdAt:datetime(), status:cx.status.new}', 
+    C_aws_ec2_volume:{
+    	id:'item_map.this["Volume"]', 
+        on_create_set:'{
+        	type:type, 
+        	name:n.identifier, 
+        	batchtime:dt, 
+        	createdAt:datetime(), 
+        	status:cx.status.new}', 
         on_match_set:'{status:cx.status.actual}', 
         input_items:'cx.input_maps', 
-        must_have_edge: '',
-        sequence_level:2        
-	},
-    C_aws_region_city:{
-      	id:'split(split(item_map.this.region,"(")[1],")")[0]', 
-        on_create_set:'{type:type, name:n.identifier, batchtime:dt, createdAt:datetime(), status:cx.status.new}', 
-        on_match_set:'{status:cx.status.actual}', 
-        input_items:'cx.input_maps', 
-        must_have_edge: '',
-        sequence_level:3        
-	},
-    C_yyyymm00:{
-    	id:'item_map.this.month', 
-        on_create_set:'{type:type, name:n.identifier, batchtime:dt, createdAt:datetime(), status:cx.status.new}', 
-        on_match_set:'{status:cx.status.actual}', 
-        input_items:'cx.input_maps', 
-        must_have_edge: 'HAS_MONTH',
-        sequence_level:2          
-	},
-    C_yyyy0000:{
-    	id:'left(item_map.this.month,4) +\'0000\'', 
-        on_create_set:'{type:type, name:n.identifier, batchtime:dt, createdAt:datetime(), status:cx.status.new}', 
-        on_match_set:'{status:cx.status.actual}', 
-        input_items:'cx.input_maps', 
-        must_have_edge: '' ,
-        sequence_level:3          
-	}    
+        must_have_edge: 'FOR_VOLUME',
+        sequence_level:1
+	}  
 } as node_id_maps
 with nLg, apoc.map.merge(cx, {node_id_maps: node_id_maps}) as cx
 
@@ -120,7 +119,7 @@ with nLg, cx, [keys(cx.node_id_maps)] as nodes
 with nLg, apoc.map.merge(cx, {nodes: nodes}) as cx
 
 //cx.nodes_to_delete := here you can define which class of nodes should be deleted before the batch job runs.Remark, adding class labels to this list does not automaticclay enforce deleting. The deletion process step must be enabled under section <<cx.steps>>
-with nLg, cx, ['C_aws_bill_cost'] as nodes_to_delete
+with nLg, cx, ['C_aws_ec2_snapshot'] as nodes_to_delete
 with nLg, apoc.map.merge(cx, {nodes_to_delete:nodes_to_delete}) as cx
 //with cxn, nLg, apoc.map.merge( cx ,{identifier: "schema"} ) as cx  
 
@@ -135,56 +134,20 @@ with nLg, apoc.map.merge(cx, {nodes_to_delete:nodes_to_delete}) as cx
 //cx.edge_id_maps.<<edge>>.input_items := ????
 
 with nLg, cx, {
-	HAS_COST:{
-    	out:'C_aws_bill_report' , 
-        type:'HAS_COST', 
-        in:'C_aws_bill_cost',
+	PART_OF:{
+    	out:'C_aws_ec2_snapshot' , 
+        type:'PART_OF', 
+        in:'C_import',
         sequence_level:0,
-        sequence_direction:'>'          
+        sequence_direction:'<'          
 	},
-	IN_REGION:{
-    	out:'C_aws_bill_cost' , 
-        type:'IN_REGION', 
-        in:'C_aws_bill_region',
+	FOR_VOLUME:{
+    	out:'C_aws_ec2_snapshot' , 
+        type:'FOR_VOLUME', 
+        in:'C_aws_ec2_volume',
         sequence_level:1,
-        sequence_direction:'>'           
-    },
-	LOCATED_IN_CITY:{
-    	out:'C_aws_bill_region' , 
-        type:'LOCATED_IN_CITY', 
-        in:'C_aws_region_city',
-        sequence_level:2,
-        sequence_direction:'>'           
-    },    
-	IN_MONTH:{
-    	out:'C_aws_bill_cost' , 
-        type:'IN_MONTH', 
-        in:'C_yyyymm00',
-        sequence_level:1,
-        sequence_direction:'>' 
-    },
-	HAS_MONTH:{
-    	out:'C_yyyy0000' , 
-        type:'HAS_MONTH', 
-        in:'C_yyyymm00',
-        sequence_level:2,
-        sequence_direction:'<' 
-    },
-	NEXT_MONTH:{
-    	out:'C_yyyymm00' , 
-        type:'NEXT_MONTH', 
-        in:'C_yyyymm00',
-        sequence_level:2,        
-        sequence_direction:'' 
-    },
-	NEXT_YEAR:{
-    	out:'C_yyyy0000' , 
-        type:'NEXT_YEAR', 
-        in:'C_yyyy0000',
-        sequence_level:3,  
-		sequence_direction:'' 
-    }
-    
+        sequence_direction:'>'          
+	}    
 }
 as edges
 with nLg, apoc.map.merge(cx, {edges: edges}) as cx
@@ -194,82 +157,45 @@ with *,  apoc.coll.sort(apoc.coll.toSet([key in keys(cx.edges)| cx.edges[key].se
 //assures that the sequence starts with 0 and continous with 1,2,3,4...
 where size(seq_levels_edges)-1=apoc.coll.max(seq_levels_edges) and seq_levels_edges[0]=0 
 with  *,  [level in seq_levels_edges| filter(type in keys(cx.edges) where cx.edges[type].sequence_level=tointeger(level))] as bufferEdges
-with *,  [x in bufferEdges | reduce(arr=[], y in x | arr+[y+cx.edges[y].sequence_direction])] as sequence_edges
+
+with *,  [x in bufferEdges | reduce(arr=[], y in x | arr+[
+CASE 
+WHEN cx.edges[y].sequence_direction=">" THEN y+cx.edges[y].sequence_direction
+ELSE cx.edges[y].sequence_direction+y END
+])] as sequence_edges
+
 
 with *,  apoc.coll.sort(apoc.coll.toSet([key in keys(cx.node_id_maps)| cx.node_id_maps[key].sequence_level])) as seq_levels_nodes
 //assures that the sequence starts with 0 and continous with 1,2,3,4...
 where size(seq_levels_nodes)-1=apoc.coll.max(seq_levels_nodes) and seq_levels_nodes[0]=0 
 with  *,  [level in seq_levels_nodes| filter(type in keys(cx.node_id_maps) where cx.node_id_maps[type].sequence_level=tointeger(level))] as sequence_nodes
-with *, 'C_aws_bill_report,HAS_COST>|HAS_COST_HISTORY>,C_aws_bill_cost' as seq
+///with *, 'C_aws_bill_report,HAS_COST>|HAS_COST_HISTORY>,C_aws_bill_cost' as seq
 
-where size(sequence_nodes)=size(sequence_edges)
-
-with *, apoc.text.join([i in range(0, size(sequence_nodes)-1) | apoc.text.join(sequence_nodes[i],"|")+","+ apoc.text.join(sequence_edges[i],"|")],", ")  as buffer
-with nLg, apoc.map.setKey(cx, "sequence",buffer) as cx
+where size(sequence_nodes)=size(sequence_edges) or size(sequence_nodes)=size(sequence_edges)+1
+with *, CASE WHEN size(sequence_nodes)=size(sequence_edges) THEN size(sequence_nodes)-1
+ELSE size(sequence_nodes)-2 END as max
+with *, apoc.text.join([i in range(0, max) | apoc.text.join(sequence_nodes[i],"|")+","+ apoc.text.join(sequence_edges[i],"|")],", ")  as buffer
+///with nLg, apoc.map.setKey(cx, "sequence",buffer) as cx
+with *, CASE WHEN size(sequence_nodes)=size(sequence_edges)+1 THEN buffer+","+ sequence_nodes[max+1][0] ELSE buffer END AS buffer2
+with nLg, apoc.map.setKey(cx, "sequence",buffer2) as cx
 
 
 with nLg, apoc.map.setKey(cx, 'out_type_in_list', [type in keys(cx.edges) | cx.edges[type].out +">"+type+">" +cx.edges[type].in]) as cx
 with nLg, cx, { 
-	HAS_COST:{
-    	out_class: cx.edges["HAS_COST"].out,
-        in_class: cx.edges["HAS_COST"].in,
+	PART_OF:{
+    	out_class: cx.edges["PART_OF"].out,
+        in_class: cx.edges["PART_OF"].in,
         input_items:'cx.input_maps', 
-    	out: cx.node_id_maps[cx.edges["HAS_COST"].out].id,
-        in: cx.node_id_maps[cx.edges["HAS_COST"].in].id
+    	out: cx.node_id_maps[cx.edges["PART_OF"].out].id,
+        in: cx.node_id_maps[cx.edges["PART_OF"].in].id
     },
-	IN_REGION:{
-    	out_class: cx.edges["IN_REGION"].out,
-        in_class: cx.edges["IN_REGION"].in,
-        input_items:'cx.input_maps',
-    	out: cx.node_id_maps[cx.edges["IN_REGION"].out].id,
-        in: cx.node_id_maps[cx.edges["IN_REGION"].in].id
-    },
-	LOCATED_IN_CITY:{
-    	out_class: cx.edges["LOCATED_IN_CITY"].out,
-        in_class: cx.edges["LOCATED_IN_CITY"].in,
-        input_items:'cx.input_maps',
-    	out: cx.node_id_maps[cx.edges["LOCATED_IN_CITY"].out].id,
-        in: cx.node_id_maps[cx.edges["LOCATED_IN_CITY"].in].id
-    },    
-	IN_MONTH:{
-    	out_class: cx.edges["IN_MONTH"].out,
-        in_class: cx.edges["IN_MONTH"].in,
-        input_items:'cx.input_maps',
-    	out: cx.node_id_maps[cx.edges["IN_MONTH"].out].id,
-        in: cx.node_id_maps[cx.edges["IN_MONTH"].in].id
-    },
-	HAS_MONTH:{
-    	out_class: cx.edges["HAS_MONTH"].out,
-        in_class: cx.edges["HAS_MONTH"].in,
-        input_items:'cx.input_maps',
-    	out: cx.node_id_maps[cx.edges["HAS_MONTH"].out].id,
-        in: cx.node_id_maps[cx.edges["HAS_MONTH"].in].id
-    },
-	NEXT_MONTH:{
-    	out_class: cx.edges["NEXT_MONTH"].out,
-        in_class: cx.edges["NEXT_MONTH"].in,
-        input_items:'cx.input_maps',
-    	out: cx.node_id_maps[cx.edges["NEXT_MONTH"].out].id,
-        in: cx.node_id_maps[cx.edges["NEXT_MONTH"].in].id,
-        nextSibblingId:'
-            with *, tointeger( left(this.identifier,4)) as thisYear
-            with *, tointeger( substring(this.identifier,4,2)) as thisMonth
-            with *, CASE WHEN thisMonth=12 THEN tostring(thisYear+1) ELSE tostring(thisYear) END as nextYear
-            with *, apoc.text.lpad(CASE WHEN thisMonth=12 THEN tostring(1) ELSE tostring(thisMonth+1) END,2,"0") as nextMonth   
-            with *, nextYear+nextMonth+"00" as nextSibblingId'      
-    },
-	NEXT_YEAR:{
-    	out_class: cx.edges["NEXT_YEAR"].out,
-        in_class: cx.edges["NEXT_YEAR"].in,
-        input_items:'cx.input_maps',
-    	out: cx.node_id_maps[cx.edges["NEXT_YEAR"].out].id,
-        in: cx.node_id_maps[cx.edges["NEXT_YEAR"].in].id,
-        nextSibblingId:'
-            with *, tointeger( left(this.identifier,4)) as thisYear
-            with *, tostring(thisYear+1) as nextYear
-            with *, nextYear+"0000" as nextSibblingId'         
-    }     
-    
+	FOR_VOLUME:{
+    	out_class: cx.edges["FOR_VOLUME"].out,
+        in_class: cx.edges["FOR_VOLUME"].in,
+        input_items:'cx.input_maps', 
+    	out: cx.node_id_maps[cx.edges["FOR_VOLUME"].out].id,
+        in: cx.node_id_maps[cx.edges["FOR_VOLUME"].in].id
+    }    
 } as edge_id_maps
 with nLg, apoc.map.merge(cx, {edge_id_maps: edge_id_maps}) as cx
 
@@ -285,8 +211,8 @@ with nLg, apoc.map.merge(cx, {edges_to_delete:edges_to_delete}) as cx
 with nLg, cx, '
 	With $cx as cx
     with *, 
-    	\'HAS_COST\' as edges, 
-        \'+C_aws_bill_cost\' as labels,
+    	\'PART_OF\' as edges, 
+        \'+C_aws_ec2_snapshot\' as labels,
         1 as limit
     MATCH(r:<<root_type>> <<root_id_map>>) 
     
@@ -410,7 +336,7 @@ with *, {
     		with *, CASE WHEN e.visitCnt=1 THEN cx.status.new ELSE e.status END as status
     		Set e.status=status
     	', 
- 		items: ['HAS_COST','IN_REGION','IN_MONTH','HAS_MONTH','LOCATED_IN_CITY'],
+ 		items: ['PART_OF','FOR_VOLUME'],
  		replaces:'
 			with $cx as cx, $item as item
 			with *, cx.edges[item] as edge_map
@@ -540,16 +466,10 @@ with *
 //CALL apoc.schema.nodes() yield name, label, properties, status, type 
 //with nLg, cx, { name:name,  label: label,  properties: properties,  status: status,  type:type} as item
 //with nLg, cx, 
-LOAD CSV WITH HEADERS FROM 'file:///w:/costs(14).csv' AS rawitem
-with nLg, cx, rawitem, left(replace(rawitem.Region,"-",""),6)+"00" as monthID
-unwind keys(rawitem) as key
-with *
-where not key starts with "Total cost" and not key starts with "Region"
-with *, replace(key,"($)","") as region
-with *, {region:region, cost:rawitem[key], month:monthID} as item
-with nLg, cx, COLLECT(item) as input_maps
+LOAD CSV WITH HEADERS FROM 'file:///w:/20190520_aws_overview_snapshots.csv' AS rawitem FIELDTERMINATOR '|'
+with nLg, cx, COLLECT(rawitem) as input_maps
 with nLg, apoc.map.merge( cx, {input_maps:input_maps }) as cx
-with nLg, apoc.map.merge( cx, {root_id_list:["overview"]}) as cx
+with nLg, apoc.map.merge( cx, {root_id_list:["aws ec2 snapshots"]}) as cx
 
 //---------------------------------------------
 //----Process steps-----
